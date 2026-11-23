@@ -564,6 +564,49 @@ metadata: { changed_fields: Object.keys(values) },
 return respond({ ok: true, data });
 }
 
+async function createManualSale(body: Record<string, unknown>) {
+if (!isObject(body.payload)) return respond({ ok: false, error: "Manual sale details are required." }, 400);
+const input = body.payload;
+const adoptCode = typeof input.adopt_code === "string" ? input.adopt_code.trim() : "";
+const fullName = typeof input.full_name === "string" ? input.full_name.trim() : "";
+const email = typeof input.email === "string" ? input.email.trim().toLowerCase() : "";
+const discord = typeof input.discord === "string" ? input.discord.trim() : "";
+const license = typeof input.license_type === "string" ? input.license_type.trim() : "";
+const paymentMethod = typeof input.payment_method === "string" ? input.payment_method.trim() : "";
+const amount = Number(input.amount);
+if (!adoptCode || !fullName || !email || !discord || !license || !paymentMethod ||
+!Number.isFinite(amount) || amount <= 0 || input.terms_accepted !== true || input.payment_confirmed !== true) {
+return respond({ ok: false, error: "Complete buyer details, license, received amount, payment method, Terms acceptance and payment confirmation." }, 400);
+}
+if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+return respond({ ok: false, error: "Enter a valid buyer email address." }, 400);
+}
+const payload = {
+adopt_code: adoptCode,
+full_name: fullName.slice(0, 180),
+email: email.slice(0, 320),
+discord: discord.slice(0, 100),
+license_type: license,
+amount,
+payment_method: paymentMethod.slice(0, 100),
+notes: typeof input.notes === "string" ? input.notes.slice(0, 2000) : "",
+terms_accepted: true,
+payment_confirmed: true,
+};
+const { data, error } = await supabase.rpc("admin_create_manual_sale", { p_payload: payload });
+if (error) return respond({ ok: false, error: error.message }, 400);
+const result = Array.isArray(data) ? data[0] : data;
+if (!result?.ok) return respond({ ok: false, error: "The manual sale could not be recorded." }, 400);
+await notifyTelegram(
+"🧾 <b>Manual sale recorded</b>\nAdopt: <code>" +
+escapeTelegramHtml(result.adopt_code || adoptCode) + "</code>\nRequest: <code>" +
+escapeTelegramHtml(result.request_code || "") + "</code>\nBuyer: " +
+escapeTelegramHtml(fullName) + "\nAmount: $" + amount.toFixed(2) + " USD\nPayment: " +
+escapeTelegramHtml(paymentMethod) + "\nStatus: Payment confirmed · delivery pending",
+);
+return respond({ ok: true, data: result });
+}
+
 async function confirmPurchasePayment(body: Record<string, unknown>) {
 if (!validUuid(body.request_id)) {
 return respond({ ok: false, error: "Invalid purchase request ID." }, 400);
@@ -1084,7 +1127,7 @@ return await saveAdoptImages(body);
 case "update-adopt":
 return await updateAdopt(body);
 
-case "confirm-purchase-payment":
+case "create-manual-sale":\nreturn await createManualSale(body);\n\ncase "confirm-purchase-payment":
 return await confirmPurchasePayment(body);
 
 case "update-purchase-request":
