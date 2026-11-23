@@ -62,6 +62,13 @@
 
 ## Transaction workflows requiring an isolated environment or explicit production-test approval
 
+### Inventory artwork storage
+- [ ] New adopt artwork uploads use the private bucket and exactly one main image is selected.
+- [ ] Failed signed uploads clean up their unlinked storage object.
+- [ ] Failed gallery saves clean up unlinked uploads while preserving any object already referenced by a saved image row.
+- [ ] Retry after a failed gallery save can re-upload the original selected files.
+- [ ] Removed or replaced gallery images no longer leave unused private objects.
+
 ### Premade purchase
 - [ ] Valid request reserves an Available adopt exactly once.
 - [ ] A second simultaneous request cannot reserve the same adopt.
@@ -88,6 +95,8 @@
 - [ ] Preview cannot be recorded before payment.
 - [ ] Final approval cannot be recorded before preview presentation.
 - [ ] Final artwork is stored in the private delivery bucket.
+- [ ] Failed final-artwork uploads or failed saves clean up unlinked objects.
+- [ ] Replacing or clearing final artwork removes the previous private object only after the new database reference is saved.
 - [ ] Delivery is blocked without final payment, final approval, character name and final artwork.
 - [ ] Delivery creates ownership and certificate exactly once.
 - [ ] Client feedback, revision notes and progress history persist after reload.
