@@ -297,7 +297,7 @@ async function purchaseAction(id,act){const r=purchaseRequests.find(x=>x.id===id
  const saved=await persistPurchaseUpdate(r,{payment_pending:true,payment_status:'Payment Pending'});
  if(saved){renderAll();openPurchaseDetail(saved)}return
 }if(act==='paid'){
- if(r.paid||!r.databaseId||!a||a.status!=='Reserved'||['Cancelled','Rejected','Completed'].includes(r.status)){toast('Only an active unpaid request with a Reserved adoptable can be confirmed.',true);return}
+ if(r.paid||!r.databaseId||!r.invoiceSent||r.status!=='Approved'||!a||a.status!=='Reserved'){toast('Approve the request and mark the invoice as sent before confirming its payment.',true);return}
  if(!confirm('Confirm that the full '+money(r.total)+' payment for '+r.id+' has actually been received?'))return;
  try{
   await window.LKFBackend.admin('confirm-purchase-payment',{request_id:r.databaseId,payment_method:r.paymentMethod||'Manual verification'});
