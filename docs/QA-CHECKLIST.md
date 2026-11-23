@@ -47,7 +47,7 @@
 ### Forms and mobile interface
 - [ ] Required-field validation appears clearly for purchase and Custom Adopt forms.
 - [ ] Invalid email, missing Discord, missing ToS acceptance and invalid links are rejected.
-- [ ] The Custom Adopt form enforces 8 images maximum and 5 MB per image.
+- [ ] The Custom Adopt form enforces 8 JPG, PNG, WebP, GIF or AVIF images maximum and 5 MB per image.
 - [ ] The interface remains usable at 360 px width.
 - [ ] Modals scroll without hiding save/cancel actions.
 - [ ] Buttons cannot be double-submitted while saving.
@@ -102,7 +102,7 @@
 - [ ] Duplicate payment confirmation is blocked.
 - [ ] Preview cannot be recorded before payment.
 - [ ] Final approval cannot be recorded before preview presentation.
-- [ ] Final artwork is stored in the private delivery bucket.
+- [ ] Final artwork accepts JPG, PNG, WebP, GIF or AVIF only, up to 20 MB, and is stored in the private delivery bucket.
 - [ ] Failed final-artwork uploads or failed saves clean up unlinked objects.
 - [ ] Replacing or clearing final artwork removes the previous private object only after the new database reference is saved.
 - [ ] Delivery is blocked without final payment, final approval, character name and final artwork.
