@@ -19,7 +19,17 @@ function escapeTelegramHtml(value: unknown): string {
   })[char]!);
 }
 
-async function notifyTelegram(message: string): Promise<void> {
+async function notifyTelegram(message: string, client: any): Promise<void> {
+  const category = message.includes("New Custom Adopt request") ? "custom_request" : "purchase_request";
+  const { data: preferenceRow, error: preferenceError } = await client
+    .from("shop_settings").select("setting_value")
+    .eq("setting_key", "telegram_notifications").maybeSingle();
+  const preferences = preferenceRow?.setting_value && typeof preferenceRow.setting_value === "object"
+    ? preferenceRow.setting_value as Record<string, unknown> : {};
+  if (!preferenceError && preferences[category] === false) {
+    console.info("[telegram] Notification disabled by administrator preference:", category);
+    return;
+  }
   const token = Deno.env.get("TELEGRAM_BOT_TOKEN");
   const chatId = Deno.env.get("TELEGRAM_CHAT_ID");
   if (!token || !chatId) {
@@ -169,6 +179,7 @@ Deno.serve(async (req) => {
         "Request: <code>" + escapeTelegramHtml(request.request_code || "New request") + "</code>\n" +
         "Adopt: " + escapeTelegramHtml(adoptCode) + "\n" +
         "License: " + escapeTelegramHtml(license),
+        supabase,
       );
       return json({ ok: true, request: data });
     }
@@ -220,6 +231,7 @@ Deno.serve(async (req) => {
         "Order: <code>" + escapeTelegramHtml(request.order_code || "New order") + "</code>\n" +
         "Character: " + escapeTelegramHtml(payload.character_name || "Not specified") + "\n" +
         "License: " + escapeTelegramHtml(license),
+        supabase,
       );
       return json({ ok: true, request: data });
     }
