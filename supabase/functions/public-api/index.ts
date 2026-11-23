@@ -51,6 +51,45 @@ Deno.serve(async (req) => {
       return json({ ok: false, error: "Check the required contact details and accept the Terms of Service." }, 400);
     }
 
+    if (action === "catalog") {
+      const { data: rows, error: catalogError } = await supabase
+        .from("adopts")
+        .select("*")
+        .or("and(status.eq.Available,public_visible.eq.true),and(status.eq.Reserved,public_visible.eq.true),and(status.eq.Sold,archive_visible.eq.true)")
+        .order("created_at", { ascending: false });
+      if (catalogError) throw catalogError;
+      const items = [];
+      for (const row of rows || []) {
+        const { data: imageRows, error: imageError } = await supabase
+          .from("adopt_images")
+          .select("storage_path,original_filename,sort_order,is_main")
+          .eq("adopt_id", row.id)
+          .order("sort_order", { ascending: true });
+        if (imageError) throw imageError;
+        const images = [];
+        for (const image of imageRows || []) {
+          const { data: signed, error: signError } = await supabase.storage
+            .from("adoptables").createSignedUrl(image.storage_path, 1800);
+          if (signError) continue;
+          images.push({
+            name: image.original_filename || "Artwork",
+            url: signed.signedUrl,
+            sortOrder: image.sort_order,
+            isMain: image.is_main,
+          });
+        }
+        items.push({
+          id: row.adopt_code, name: row.name, category: row.category || "Other",
+          price: Number(row.price || 0), status: row.status, publicVisible: row.public_visible,
+          archiveVisible: row.archive_visible, symbol: row.symbol || "✧",
+          description: row.description || "", files: row.files || [], tags: row.tags || [],
+          featured: !!row.featured, images, mainImage: Math.max(0, images.findIndex((x) => x.isMain)),
+          databaseId: row.id,
+        });
+      }
+      return json({ ok: true, adopts: items });
+    }
+
     if (action === "purchase") {
       const adoptCode = String(payload.adopt_code || "").trim();
       const license = String(payload.license_type || "");
