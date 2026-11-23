@@ -438,7 +438,7 @@ function editCustomCharacter(r){
  const root=document.createElement('div');root.className='modal-backdrop';
  const art=r.finalArtwork?.url?'<img src="'+esc(r.finalArtwork.url)+'" alt="Current finished character artwork"><p>'+esc(r.finalArtwork.name||'Final artwork')+'</p>':'<p class="fine">No finished character artwork supplied yet.</p>';
  root.innerHTML='<section class="modal-card" role="dialog" aria-modal="true"><button class="modal-close" aria-label="Close">×</button><p class="eyebrow">Private final artwork</p><h2>Character Name &amp; Final Artwork</h2><p class="muted">This artwork is separate from client references. It will be uploaded to the private delivery bucket and only shown to the administrator through a temporary signed URL.</p><label class="field">Finished character name<input id="final-character-name" value="'+esc(r.characterName||'')+'" placeholder="Character name"></label><label class="field">Finished character artwork<input id="final-character-art" type="file" accept="image/*"><span class="fine">Image only · maximum 20 MB.</span></label><div class="final-art-preview">'+art+'</div><label class="checkline"><input id="remove-final-art" type="checkbox"> Clear the current final artwork reference</label><div id="final-art-error"></div><div class="actions"><button class="btn primary" id="save-final-art">Save Character Details</button></div></section>';
- document.body.append(root);let file=null;
+ document.body.append(root);let file=null,pendingFinalArtworkPath=null;
  root.querySelector('.modal-close').onclick=()=>root.remove();
  root.addEventListener('click',e=>{if(e.target===root)root.remove()});
  root.querySelector('#final-character-art').addEventListener('change',e=>{
@@ -459,14 +459,17 @@ function editCustomCharacter(r){
    let path=r.finalArtwork?.storagePath||null;
    if(file){
     const ticket=await window.LKFBackend.admin('create-final-artwork-upload',{custom_order_id:r.databaseId,filename:file.name,content_type:file.type,file_size:file.size});
+    pendingFinalArtworkPath=ticket.path;
     const uploaded=await window.LKFBackend.client.storage.from('private-deliveries').uploadToSignedUrl(ticket.path,ticket.token,file,{contentType:file.type,upsert:false});
     if(uploaded.error)throw uploaded.error;
     path=ticket.path;
    }else if(root.querySelector('#remove-final-art').checked){path=null}
    const saved=await persistCustomUpdate(r,{character_name:name||null,final_artwork_path:path});
    if(!saved)throw new Error('The final artwork reference could not be saved.');
+   pendingFinalArtworkPath=null;
    root.remove();renderAll();openCustomDetail(saved);
   }catch(err){
+   if(pendingFinalArtworkPath){const path=pendingFinalArtworkPath;pendingFinalArtworkPath=null;try{await window.LKFBackend.admin('cleanup-final-artwork-upload',{custom_order_id:r.databaseId,path})}catch(cleanupError){console.error('[AdoptShop] Temporary final artwork cleanup failed:',cleanupError)}}
    error.innerHTML=errorBox([err?.message||'Final artwork could not be saved.']);
    button.disabled=false;button.textContent='Save Character Details';
   }
