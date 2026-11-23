@@ -395,6 +395,120 @@ pending_certificates: pendingCertificates ?? 0,
 });
 }
 
+async function createAdopt(body: Record<string, unknown>) {
+if (!isObject(body.values)) return respond({ ok: false, error: "Invalid adopt data." }, 400);
+const input = body.values;
+const adoptCode = typeof input.adopt_code === "string" ? input.adopt_code.trim() : "";
+const name = typeof input.name === "string" ? input.name.trim() : "";
+const price = Number(input.price);
+if (!adoptCode || adoptCode.length > 80 || !/^[A-Za-z0-9][A-Za-z0-9_-]*$/.test(adoptCode)) {
+return respond({ ok: false, error: "Adopt ID must be 1–80 characters and use only letters, numbers, hyphens or underscores." }, 400);
+}
+if (!name || name.length > 180 || !Number.isFinite(price) || price < 0) {
+return respond({ ok: false, error: "Enter a valid character name and non-negative price." }, 400);
+}
+const values = pickAllowed(input, [
+"adopt_code", "name", "category", "price", "currency", "status",
+"public_visible", "description", "license_info", "tags", "files",
+"featured", "archive_visible", "symbol", "metadata",
+]);
+values.adopt_code = adoptCode;
+values.name = name;
+values.price = price;
+values.currency = "USD";
+const { data, error } = await supabase.from("adopts").insert(values).select().single();
+if (error) return respond({ ok: false, error: error.code === "23505" ? "That Adopt ID is already in use." : error.message }, 400);
+await supabase.from("activity_log").insert({
+entity_type: "adopt", entity_id: data.id, action: "adopt_created",
+description: "Adoptable created from admin panel",
+metadata: { adopt_code: adoptCode },
+});
+return respond({ ok: true, data });
+}
+
+async function createAdoptImageUpload(body: Record<string, unknown>) {
+if (!validUuid(body.adopt_id)) return respond({ ok: false, error: "Invalid adopt ID." }, 400);
+const filename = typeof body.filename === "string" ? body.filename.trim().slice(0, 180) : "";
+const contentType = typeof body.content_type === "string" ? body.content_type.toLowerCase() : "";
+const fileSize = Number(body.file_size);
+if (!filename || !/^image\/(jpeg|png|webp|gif|avif)$/.test(contentType) ||
+!Number.isFinite(fileSize) || fileSize <= 0 || fileSize > 10 * 1024 * 1024) {
+return respond({ ok: false, error: "Choose a JPG, PNG, WebP, GIF or AVIF image up to 10 MB." }, 400);
+}
+const { data: adopt, error: adoptError } = await supabase.from("adopts")
+.select("id").eq("id", body.adopt_id).maybeSingle();
+if (adoptError) return respond({ ok: false, error: adoptError.message }, 400);
+if (!adopt) return respond({ ok: false, error: "Adoptable not found." }, 404);
+const extension = filename.includes(".") ? filename.split(".").pop()!.toLowerCase().replace(/[^a-z0-9]/g, "").slice(0, 8) : "img";
+const path = "adopts/" + String(body.adopt_id) + "/" + crypto.randomUUID() + "." + (extension || "img");
+const { data, error } = await supabase.storage.from("adoptables").createSignedUploadUrl(path);
+if (error || !data?.token) return respond({ ok: false, error: error?.message || "Could not prepare secure image upload." }, 400);
+return respond({ ok: true, path, token: data.token });
+}
+
+async function saveAdoptImages(body: Record<string, unknown>) {
+if (!validUuid(body.adopt_id) || !Array.isArray(body.images) || body.images.length > 30) {
+return respond({ ok: false, error: "Invalid adopt image list." }, 400);
+}
+const adoptId = body.adopt_id;
+const { data: adopt, error: adoptError } = await supabase.from("adopts").select("id").eq("id", adoptId).maybeSingle();
+if (adoptError) return respond({ ok: false, error: adoptError.message }, 400);
+if (!adopt) return respond({ ok: false, error: "Adoptable not found." }, 404);
+const { data: current, error: currentError } = await supabase.from("adopt_images")
+.select("id, storage_path").eq("adopt_id", adoptId);
+if (currentError) return respond({ ok: false, error: currentError.message }, 400);
+const currentById = new Map((current || []).map((row: Record<string, unknown>) => [String(row.id), row]));
+const keepIds = new Set<string>();
+const newRows: Record<string, unknown>[] = [];
+const updateRows: { id: string; sort_order: number; is_main: boolean }[] = [];
+for (let index = 0; index < body.images.length; index++) {
+const item = body.images[index];
+if (!isObject(item)) return respond({ ok: false, error: "Invalid image entry." }, 400);
+const isMain = item.is_main === true;
+if (typeof item.id === "string") {
+const row = currentById.get(item.id);
+if (!row || keepIds.has(item.id)) return respond({ ok: false, error: "An image does not belong to this adoptable." }, 400);
+keepIds.add(item.id);
+updateRows.push({ id: item.id, sort_order: index, is_main: isMain });
+} else {
+const path = typeof item.storage_path === "string" ? item.storage_path : "";
+const expectedPrefix = "adopts/" + String(adoptId) + "/";
+const filename = typeof item.original_filename === "string" ? item.original_filename.trim().slice(0, 180) : "";
+const mime = typeof item.mime_type === "string" ? item.mime_type.toLowerCase() : "";
+const size = Number(item.file_size);
+if (!path.startsWith(expectedPrefix) || path.includes("..") || !filename ||
+!/^image\/(jpeg|png|webp|gif|avif)$/.test(mime) || !Number.isFinite(size) || size <= 0 || size > 10 * 1024 * 1024) {
+return respond({ ok: false, error: "An uploaded image has invalid metadata." }, 400);
+}
+newRows.push({ adopt_id: adoptId, storage_path: path, original_filename: filename, mime_type: mime, file_size: size, sort_order: index, is_main: isMain });
+}
+}
+for (const row of updateRows) {
+const { error } = await supabase.from("adopt_images").update({ sort_order: row.sort_order, is_main: row.is_main }).eq("id", row.id).eq("adopt_id", adoptId);
+if (error) return respond({ ok: false, error: error.message }, 400);
+}
+if (newRows.length) {
+const { error } = await supabase.from("adopt_images").insert(newRows);
+if (error) return respond({ ok: false, error: error.message }, 400);
+}
+const removed = (current || []).filter((row: Record<string, unknown>) => !keepIds.has(String(row.id)));
+if (removed.length) {
+const { error } = await supabase.from("adopt_images").delete().in("id", removed.map((row: Record<string, unknown>) => row.id));
+if (error) return respond({ ok: false, error: error.message }, 400);
+const paths = removed.map((row: Record<string, unknown>) => row.storage_path).filter((path): path is string => typeof path === "string" && path.startsWith("adopts/" + String(adoptId) + "/"));
+if (paths.length) {
+const { error: storageError } = await supabase.storage.from("adoptables").remove(paths);
+if (storageError) console.error("[AdoptShop] Removed image rows but storage cleanup failed:", storageError.message);
+}
+}
+await supabase.from("activity_log").insert({
+entity_type: "adopt", entity_id: adoptId, action: "adopt_images_updated",
+description: "Adoptable artwork updated from admin panel",
+metadata: { image_count: body.images.length },
+});
+return respond({ ok: true, image_count: body.images.length });
+}
+
 async function updateAdopt(body: Record<string, unknown>) {
 if (!validUuid(body.id) || !isObject(body.values)) {
 return respond({ ok: false, error: "Invalid adopt update." }, 400);
@@ -951,6 +1065,15 @@ if (typeof body.resource !== "string") {
 return respond({ ok: false, error: "Resource is required." }, 400);
 }
 return await listTable(body.resource, body);
+
+case "create-adopt":
+return await createAdopt(body);
+
+case "create-adopt-image-upload":
+return await createAdoptImageUpload(body);
+
+case "save-adopt-images":
+return await saveAdoptImages(body);
 
 case "update-adopt":
 return await updateAdopt(body);
