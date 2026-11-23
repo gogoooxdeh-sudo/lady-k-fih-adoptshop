@@ -383,7 +383,7 @@ async function customAction(id,act,nextValue=null){const r=customRequests.find(x
  if(r.paymentPlan!=='full'||!r.accepted||!(r.quoteBase>0)||!r.quoteSent||!r.clientApprovedQuote||r.fullPaid||r.initialPaid||r.finalPaid||!r.databaseId){toast('Select Full Payment and confirm an accepted, quoted and client-approved order first.',true);return}
  if(!confirm('Confirm that the full Custom Adopt payment has actually been received?'))return;
  try{
-  await window.LKFBackend.admin('confirm-custom-payment',{custom_order_id:r.databaseId,stage:'full-payment',payment_method:r.paymentMethod||'Manual verification'});
+  await window.LKFBackend.admin('confirm-custom-payment',{custom_order_id:r.databaseId,stage:'full',payment_method:r.paymentMethod||'Manual verification'});
   await loadAdminData();renderAll();
   const fresh=customRequests.find(x=>x.databaseId===r.databaseId);if(fresh)openCustomDetail(fresh);
  }catch(error){toast(error?.message||'Custom payment could not be confirmed.',true)}return
