@@ -270,8 +270,8 @@ Deno.serve(async (req) => {
       try {
         for (let i = 0; i < files.length; i++) {
           const file = files[i];
-          if (!file.type.startsWith("image/") || file.size <= 0 || file.size > 5 * 1024 * 1024) {
-            throw new Error("Each reference must be an image no larger than 5 MB.");
+          if (!/^image\\/(jpeg|png|webp|gif|avif)$/.test(file.type.toLowerCase()) || file.size <= 0 || file.size > 5 * 1024 * 1024) {
+            throw new Error("Each reference must be a JPG, PNG, WebP, GIF or AVIF image no larger than 5 MB.");
           }
           const ext = (file.name.split(".").pop() || "img").replace(/[^a-zA-Z0-9]/g, "").slice(0, 8) || "img";
           const path = `custom-requests/${crypto.randomUUID()}/${String(i + 1).padStart(2, "0")}.${ext}`;
