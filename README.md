@@ -28,6 +28,7 @@ The application uses plain HTML, CSS and JavaScript. Supabase provides persisten
 - Payment is manually verified by the artist. The shop does not collect or process money.
 - Manual premade sales are recorded through an atomic database transaction. Buyer details, the purchase request, confirmed payment, inventory status and activity history are saved together. Duplicate manual sales are blocked by inventory state and active-request checks.
 - Delivery is a separate administrative action. Ownership and the certificate record are created by the existing delivery transaction after delivery is actually completed. Certificates begin in Pending Review and require artist approval.
+- Premade ownership transfers are available only for delivered, paid records carrying the Full Rights Transfer license. The administrator records the new owner, both parties’ consent and supporting notes in one database transaction. The previous owner and certificate remain in history; the previous certificate is marked Superseded and a new certificate is created as Pending Review.
 - Telegram notifications are private administrative alerts sent server-side. They never confirm payments or perform management actions.
 
 ## Manual sale workflow
@@ -43,6 +44,10 @@ Saving the form:
 6. Leaves delivery pending.
 
 After the actual files have been delivered, use the separate delivery action on the purchase request. That transaction creates the ownership record and certificate for review. The manual-sale form does not send files, issue a refund, or process a payment.
+
+## Ownership transfer workflow
+
+Open the private Ownership Records view and choose Record Transfer for an eligible Full Rights Transfer premade adopt. Enter the new owner’s name and email, optional Discord, and a note/evidence reference. The administrator must confirm that the previous owner consented, the new owner accepted the existing license terms, and the administrator authorizes the change. The transaction preserves the original ownership row, records the new owner, supersedes the prior certificate and creates a new certificate awaiting review. It does not change the original payment, collect money, send files or automatically approve the certificate. Custom Adopt ownership transfers are not enabled by this workflow.
 
 ## Important limitations
 
