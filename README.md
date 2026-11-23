@@ -26,6 +26,7 @@ The application uses plain HTML, CSS and JavaScript. Supabase provides persisten
 - Inventory creation, editing, image uploads, gallery ordering and publication settings are connected to the admin API.
 - Purchase and Custom request records, customer details, payment history, ownership records, certificates and activity history are stored in Supabase.
 - Payment is manually verified by the artist. The shop does not collect or process money.
+- Store availability is persisted in `shop_settings` and synchronized between the admin panel and public catalog. The public API also rejects purchase and Custom Adopt submissions unless the store status is `Public`.
 - Manual premade sales are recorded through an atomic database transaction. Buyer details, the purchase request, confirmed payment, inventory status and activity history are saved together. Duplicate manual sales are blocked by inventory state and active-request checks.
 - Delivery is a separate administrative action. Ownership and the certificate record are created by the existing delivery transaction after delivery is actually completed. Certificates begin in Pending Review and require artist approval.
 - Premade ownership transfers are available only for delivered, paid records carrying the Full Rights Transfer license. The administrator records the new owner, both parties’ consent and supporting notes in one database transaction. The previous owner and certificate remain in history; the previous certificate is marked Superseded and a new certificate is created as Pending Review.
@@ -52,7 +53,7 @@ Open the private Ownership Records view and choose Record Transfer for an eligib
 ## Important limitations
 
 - No payment gateway is connected. Payment confirmation means the artist has independently checked that funds were received.
-- Store profile/settings editing and notification preference editing are not currently available in the admin panel; the settings page explains this rather than offering local-only save controls.
+- Store availability can be set to Public, Temporarily Closed or Hidden from Public and is enforced by the public API. Store profile/contact editing and notification preference editing are not currently available in the admin panel.
 - Some Custom Adopt workflow controls still require additional integration and browser verification. Do not treat any action as complete unless the panel confirms it was saved and the corresponding database record is present.
 - Certificate review and approval are administrative records; certificate documents do not replace the official Terms of Service.
 - No real customer, inventory, purchase, payment or ownership records were created as part of development or testing.
