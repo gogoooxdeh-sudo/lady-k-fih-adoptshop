@@ -43,7 +43,7 @@ Deno.serve(async (req) => {
       payload = body?.payload || {};
     }
 
-    const fullName = String(payload.full_name || "").trim();
+    if (action !== "catalog") {\n    const fullName = String(payload.full_name || "").trim();
     const email = String(payload.email || "").trim();
     const discord = String(payload.discord || "").trim();
     if (!fullName || fullName.length > 160 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ||
@@ -51,7 +51,7 @@ Deno.serve(async (req) => {
       return json({ ok: false, error: "Check the required contact details and accept the Terms of Service." }, 400);
     }
 
-    if (action === "catalog") {
+    }\n\n    if (action === "catalog") {
       const { data: rows, error: catalogError } = await supabase
         .from("adopts")
         .select("*")
