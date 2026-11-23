@@ -546,6 +546,27 @@ metadata: { image_count: body.images.length },
 return respond({ ok: true, image_count: body.images.length });
 }
 
+async function cleanupAdoptImageUploads(body: Record<string, unknown>) {
+  if (!validUuid(body.adopt_id) || !Array.isArray(body.paths) || body.paths.length > 30) {
+    return respond({ ok: false, error: "Invalid adopt image cleanup request." }, 400);
+  }
+  const adoptId = String(body.adopt_id);
+  const prefix = "adopts/" + adoptId + "/";
+  const paths = [...new Set(body.paths.filter((value): value is string =>
+    typeof value === "string" && value.startsWith(prefix) && !value.includes("..") && value.length <= 500
+  ))];
+  if (!paths.length) return respond({ ok: true, removed_count: 0 });
+  const { data: linked, error: linkedError } = await supabase
+    .from("adopt_images").select("storage_path").eq("adopt_id", adoptId).in("storage_path", paths);
+  if (linkedError) return respond({ ok: false, error: linkedError.message }, 400);
+  const linkedPaths = new Set((linked || []).map((row: { storage_path: string }) => row.storage_path));
+  const unlinkedPaths = paths.filter((path) => !linkedPaths.has(path));
+  if (!unlinkedPaths.length) return respond({ ok: true, removed_count: 0 });
+  const { error: removeError } = await supabase.storage.from("adoptables").remove(unlinkedPaths);
+  if (removeError) return respond({ ok: false, error: removeError.message }, 400);
+  return respond({ ok: true, removed_count: unlinkedPaths.length });
+}
+
 async function sendTelegramTest() {
   const token = Deno.env.get("TELEGRAM_BOT_TOKEN");
   const chatId = Deno.env.get("TELEGRAM_CHAT_ID");
@@ -1381,6 +1402,9 @@ return await createAdoptImageUpload(body);
 
 case "save-adopt-images":
 return await saveAdoptImages(body);
+
+case "cleanup-adopt-image-uploads":
+return await cleanupAdoptImageUploads(body);
 
 case "update-adopt":
 return await updateAdopt(body);
