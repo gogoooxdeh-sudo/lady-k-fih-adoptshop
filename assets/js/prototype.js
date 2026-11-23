@@ -406,12 +406,12 @@ async function customAction(id,act,nextValue=null){const r=customRequests.find(x
  const saved=await persistCustomUpdate(r,{status:'Approved'});
  if(saved){renderAll();openCustomDetail(saved)}return
 }if(act==='reject'){
- if(r.finalPaid||r.fullPaid||['Rejected','Cancelled'].includes(r.status)){toast('This request is already closed or completed.',true);return}
+ if(r.initialPaid||r.finalPaid||r.fullPaid||['Rejected','Cancelled'].includes(r.status)){toast('This request is already paid, closed or completed.',true);return}
  if(!confirm('Reject '+id+'?'))return;
  const saved=await persistCustomUpdate(r,{status:'Rejected'});
  if(saved){renderAll();openCustomDetail(saved)}return
 }if(act==='clarify'){
- if(r.finalPaid||r.fullPaid||['Rejected','Cancelled'].includes(r.status)){toast('This request is closed.',true);return}
+ if(r.initialPaid||r.finalPaid||r.fullPaid||['Rejected','Cancelled'].includes(r.status)){toast('This request is paid or closed.',true);return}
  const saved=await persistCustomUpdate(r,{status:'Clarification Requested'});
  if(saved){renderAll();openCustomDetail(saved)}return
 }if(act==='quote'){
@@ -474,7 +474,7 @@ async function customAction(id,act,nextValue=null){const r=customRequests.find(x
  try{await window.LKFBackend.admin('complete-custom-delivery',{custom_order_id:r.databaseId});await loadAdminData();renderAll();const fresh=customRequests.find(x=>x.databaseId===r.databaseId);if(fresh)openCustomDetail(fresh)}
  catch(error){toast(error?.message||'Custom order could not be completed.',true)}return
 }if(act==='certificate'){toast('Certificate generation will be enabled after the real payment and certificate records are connected.',true);return}if(act==='cancel'){
- if(r.finalPaid||r.fullPaid){toast('A paid request cannot be cancelled through this action.',true);return}
+ if(r.initialPaid||r.finalPaid||r.fullPaid){toast('A paid request cannot be cancelled through this action.',true);return}
  if(!confirm('Cancel '+id+'? The request and its history will be preserved.'))return;
  const saved=await persistCustomUpdate(r,{status:'Cancelled'});
  if(saved){renderAll();openCustomDetail(saved)}return
