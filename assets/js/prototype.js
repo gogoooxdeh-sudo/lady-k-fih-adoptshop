@@ -279,6 +279,7 @@ function openAdoptForm(a=null){
  const x=a||{id:'',name:'',category:'Human',price:0,status:'Available',description:'',files:[],tags:[],images:[],mainImage:0,symbol:'✧',featured:false};
  let images=(x.images||[]).map(im=>({...im})),mainImage=Math.min(Number(x.mainImage)||0,Math.max(images.length-1,0));
  let persistedId=a?.databaseId||null,persistedCode=a?.id||'';
+ let pendingUploadPaths=[],imagesCommitted=false;
  const back=document.createElement('div');back.className='modal-backdrop';
  back.innerHTML=`<section class="modal-card wide-modal" role="dialog" aria-modal="true"><button class="modal-close">×</button><p class="eyebrow">Supabase inventory editor</p><h2>${a?'Edit Adopt':'Add Adopt'}</h2><form id="adopt-editor" novalidate><details class="admin-accordion" open><summary><span class="accordion-icon">✧</span><span class="accordion-heading"><b>01 — Character Information</b><small>Save the character record and artwork to the secure shop database.</small></span><span class="accordion-chevron">⌄</span></summary><div class="accordion-content"><div class="form-grid"><label class="field">Character name <span class="required">*</span><input name="name" value="${esc(x.name)}" required></label><label class="field">Adopt ID <span class="required">*</span><input name="id" value="${esc(x.id)}" required ${a?'readonly':''}></label><label class="field">Category<select name="category">${CATEGORIES.map(c=>`<option ${c===x.category?'selected':''}>${c}</option>`).join('')}</select></label><label class="field">License information<input name="licenseInfo" value="${esc(x.licenseInfo||'Personal Use · Commercial Use · Full Rights Transfer')}" placeholder="License options shown for this adoptable"></label><label class="field">Base price (US$)<input name="price" type="number" min="0" step="0.01" value="${Number(x.price)||0}" required></label><label class="field full">Description<textarea name="description">${esc(x.description)}</textarea></label><label class="field">Tags (comma separated)<input name="tags" value="${esc((x.tags||[]).join(', '))}"></label><label class="field">Included file types / deliverables (names only; never add private download links)<textarea name="files">${esc((x.files||[]).map(f=>typeof f==='string'?f:f.name).join('\n'))}</textarea></label><label class="field full">Artwork images (up to 10 MB each)<input id="adopt-image-input" type="file" accept="image/jpeg,image/png,image/webp,image/gif,image/avif" multiple><span class="fine">Images upload to the private AdoptShop bucket. Choose the main artwork below.</span><div id="adopt-image-editor" class="art-image-editor"></div></label></div><div id="adopt-form-errors"></div><div class="actions"><button class="btn primary" id="adopt-save-button" type="submit">${a?'Save Changes':'Add Adopt'}</button><button class="btn" type="button" data-editor-cancel>Cancel</button></div></div></details></form></section>`;
  document.body.append(back);
@@ -314,6 +315,7 @@ function openAdoptForm(a=null){
   back.querySelector('#adopt-form-errors').innerHTML=errorBox(errors);if(errors.length)return;
   if(!window.LKFBackend?.ready){back.querySelector('#adopt-form-errors').innerHTML=errorBox(['The secure inventory service is unavailable.']);return}
   const button=back.querySelector('#adopt-save-button');button.disabled=true;button.textContent='Saving securely…';
+  let uploadedForCommit=[];
   try{
    const values={adopt_code:id,name,category:String(f.get('category')||'Other'),price,currency:'USD',status:a?.status||'Available',public_visible:a?a.publicVisible!==false:true,description:String(f.get('description')||'').trim(),license_info:String(f.get('licenseInfo')||'').trim(),tags:String(f.get('tags')||'').split(',').map(z=>z.trim()).filter(Boolean),files:String(f.get('files')||'').split(/\r?\n/).map(z=>z.trim()).filter(Boolean),featured:a?!!a.featured:false,archive_visible:a?a.archiveVisible!==false:true,symbol:x.symbol||'✧',metadata:a?.metadata||{}};
    let saved;
@@ -329,7 +331,7 @@ function openAdoptForm(a=null){
     if(im.file){
      const uploaded=await window.LKFBackend.uploadAdoptImage(persistedId,im.file);
      finalImages.push({...uploaded,is_main:index===mainImage});
-     im.storagePath=uploaded.storage_path;im.file=null;im.uploaded=true;
+     pendingUploadPaths.push(uploaded.storage_path);uploadedForCommit.push({im,uploaded});
     }else if(im.id){
      finalImages.push({id:im.id,is_main:index===mainImage});
     }else if(im.storagePath&&im.uploaded){
@@ -339,9 +341,12 @@ function openAdoptForm(a=null){
     }
    }
    await window.LKFBackend.admin('save-adopt-images',{adopt_id:persistedId,images:finalImages});
+   imagesCommitted=true;pendingUploadPaths=[];
+   uploadedForCommit.forEach(({im,uploaded})=>{im.storagePath=uploaded.storage_path;im.file=null;im.uploaded=true});
    await loadAdminData();close();renderAll();
    toast((a?'Adopt updated':'Adopt created')+' and saved to the secure inventory.');
   }catch(error){
+   if(!imagesCommitted&&pendingUploadPaths.length&&persistedId){const paths=[...pendingUploadPaths];pendingUploadPaths=[];try{await window.LKFBackend.admin('cleanup-adopt-image-uploads',{adopt_id:persistedId,paths})}catch(cleanupError){console.error('[AdoptShop] Temporary image cleanup failed:',cleanupError)}}
    back.querySelector('#adopt-form-errors').innerHTML=errorBox([error?.message||'The adoptable could not be saved.']);
    button.disabled=false;button.textContent=persistedId?'Retry Save':'Add Adopt';
   }
