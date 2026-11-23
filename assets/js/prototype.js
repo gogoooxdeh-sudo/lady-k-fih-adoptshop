@@ -663,7 +663,7 @@ openCertificatePreview=function(key){
  const actions=[
   {label:'Print / Save as PDF',action:m=>{m.remove();printCertificate(key)}},
   {label:'Download HTML',action:m=>{m.remove();downloadCertificate(key)}},
-  ...(record?.certificateId&&!approved?[{label:'Approve Certificate',primary:true,action:m=>{m.remove();reviewCertificateRecord(record,'approve',kind)}}]:[])
+  ...(record?.certificateId&&record?.certificateStatus==='Pending Review'?[{label:'Approve Certificate',primary:true,action:m=>{m.remove();reviewCertificateRecord(record,'approve',kind)}}]:[])
  ];
  openModal(`Certificate Review · ${d.number||'Certificate'}`,body,actions);
 };
