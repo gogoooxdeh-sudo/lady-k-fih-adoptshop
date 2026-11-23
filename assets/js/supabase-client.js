@@ -134,13 +134,22 @@
         content_type: file.type,
         file_size: file.size,
       });
-      const { error } = await client.storage.from('adoptables').uploadToSignedUrl(
-        prepared.path,
-        prepared.token,
-        file,
-        { contentType: file.type, upsert: false },
-      );
-      if (error) throw new Error(error.message || 'Image upload failed.');
+      try {
+        const { error } = await client.storage.from('adoptables').uploadToSignedUrl(
+          prepared.path,
+          prepared.token,
+          file,
+          { contentType: file.type, upsert: false },
+        );
+        if (error) throw new Error(error.message || 'Image upload failed.');
+      } catch (uploadError) {
+        try {
+          await backend.admin('cleanup-adopt-image-uploads', { adopt_id: adoptId, paths: [prepared.path] });
+        } catch (cleanupError) {
+          console.error('[Lady K ★ Fih] Temporary image cleanup failed:', cleanupError);
+        }
+        throw uploadError;
+      }
       return {
         storage_path: prepared.path,
         original_filename: file.name,
