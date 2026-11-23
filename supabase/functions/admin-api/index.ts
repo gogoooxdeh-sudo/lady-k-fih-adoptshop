@@ -530,6 +530,34 @@ metadata: { image_count: body.images.length },
 return respond({ ok: true, image_count: body.images.length });
 }
 
+async function sendTelegramTest() {
+  const token = Deno.env.get("TELEGRAM_BOT_TOKEN");
+  const chatId = Deno.env.get("TELEGRAM_CHAT_ID");
+  if (!token || !chatId) {
+    return respond({ ok: false, error: "Telegram bot credentials are not configured in Supabase secrets." }, 503);
+  }
+  try {
+    const response = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        chat_id: chatId,
+        text: "✦ Lady K ★ Fih AdoptShop\nPrivate Telegram test successful. Administrative notifications are reachable.",
+        disable_web_page_preview: true,
+      }),
+    });
+    const result = await response.json().catch(() => null);
+    if (!response.ok || !result?.ok) {
+      console.error("[telegram] Test message rejected with HTTP", response.status);
+      return respond({ ok: false, error: "Telegram rejected the test message. Check the bot and chat configuration in Supabase." }, 502);
+    }
+    return respond({ ok: true, message: "Test message sent to the configured private Telegram chat." });
+  } catch (error) {
+    console.error("[telegram] Test message failed:", error instanceof Error ? error.message : "unknown error");
+    return respond({ ok: false, error: "Telegram could not be reached. Try again later." }, 502);
+  }
+}
+
 async function updateTelegramPreferences(body: Record<string, unknown>) {
   const keys = [
     "purchase_request", "custom_request", "manual_sale", "ownership_transfer",
@@ -1244,6 +1272,9 @@ return await updateStoreVisibility(body);
 
 case "update-telegram-preferences":
 return await updateTelegramPreferences(body);
+
+case "test-telegram":
+return await sendTelegramTest();
 
 case "create-manual-sale":
 return await createManualSale(body);
