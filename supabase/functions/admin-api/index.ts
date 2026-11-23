@@ -415,7 +415,7 @@ return respond({ ok: false, error: "Invalid purchase request ID." }, 400);
 }
 const { data: request, error: requestError } = await supabase
 .from("purchase_requests")
-.select("id, adopt_id, total, paid, status")
+.select("id, adopt_id, total, paid, status, invoice_sent")
 .eq("id", body.request_id)
 .maybeSingle();
 if (requestError) return respond({ ok: false, error: requestError.message }, 400);
@@ -423,6 +423,9 @@ if (!request) return respond({ ok: false, error: "Purchase request not found." }
 if (request.paid) return respond({ ok: true, already_confirmed: true });
 if (["Cancelled", "Rejected", "Completed", "Delivered"].includes(request.status)) {
 return respond({ ok: false, error: "This purchase request is closed." }, 409);
+}
+if (request.status !== "Approved" || !request.invoice_sent) {
+return respond({ ok: false, error: "Approve the request and mark the invoice as sent before confirming payment." }, 409);
 }
 const { data: adopt, error: adoptError } = await supabase
 .from("adopts")
