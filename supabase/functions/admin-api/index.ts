@@ -1100,9 +1100,7 @@ const values = pickAllowed(body.values, [
 "client_approved_quote",
 "payment_plan",
 "preview_presented",
-"preview_presented_at",
 "final_approved",
-"final_approved_at",
 "final_artwork_path",
 "metadata",
 ]);
@@ -1173,6 +1171,8 @@ return respond({ ok: false, error: "A preview must be recorded before final desi
 if (values.quote_sent === true && !(Number(values.quote_base ?? current.quote_base) > 0)) {
 return respond({ ok: false, error: "Set a valid design quotation before marking it as sent." }, 409);
 }
+if (values.preview_presented === true) values.preview_presented_at = new Date().toISOString();
+if (values.final_approved === true) values.final_approved_at = new Date().toISOString();
 values.updated_at = new Date().toISOString();
 
 const { data, error } = await supabase
