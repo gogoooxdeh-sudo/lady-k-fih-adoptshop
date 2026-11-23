@@ -1,7 +1,7 @@
 /* Lady K ★ Fih — AdoptShop frontend. Public catalog and administrator records use Supabase. */
 (()=>{
 'use strict';
-const $=s=>document.querySelector(s), $=s=>[...document.querySelectorAll(s)];
+const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
 const runtimeDiag={captureClicks:0,delegatedClicks:0,lastTarget:'None yet',lastAdminView:'Not opened',errors:[]};
 let runtimeDiagPanel=null;
 function refreshRuntimeDiag(){
