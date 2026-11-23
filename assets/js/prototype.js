@@ -9,7 +9,7 @@ const STATUS=['Available','Reserved','Sold'];
 const PR_STATUS=['Pending Review','Clarification Requested','Approved','Payment Confirmed','Delivered','Rejected','Cancelled'];
 const CR_STATUS=['Pending Review','Clarification Requested','Approved','Quote Pending','Quote Sent','Awaiting Client Approval','Awaiting Initial Payment','Initial Payment Confirmed','In Progress','Awaiting Preview','Awaiting Final Approval','Awaiting Final Payment','Final Payment Confirmed','Awaiting Delivery','Delivered','Completed','Cancelled'];const CUSTOM_ADMIN_STATUSES=['New Request','In Progress','Ready for Delivery','Completed','Cancelled'];
 let adopts=[],purchaseRequests=[],customRequests=[],ownership=[],activities=[];
-let notificationPrefs={purchase:true,custom:true,payment:true,cancellation:true,error:true},notificationChannels={email:false,telegram:false},storeVisibility='Public';
+let notificationPrefs={purchase:true,custom:true,payment:true,cancellation:true,error:true},notificationChannels={email:false,telegram:false},storeVisibility='Temporarily Closed';
 let currentPage='home',activeCategory='All categories',currentAdoptId=null,currentLicense='Personal Use',customLicense='Personal Use',customFiles=[],certificateSelection='',toastTimer=null;
 function clone(x){return JSON.parse(JSON.stringify(x))}const money=n=>'US$'+Number(n||0).toFixed(2).replace(/\.00$/,'');
 const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
