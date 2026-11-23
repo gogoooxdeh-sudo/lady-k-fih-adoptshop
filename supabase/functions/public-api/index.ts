@@ -88,14 +88,19 @@ Deno.serve(async (req) => {
     });
 
     const contentType = req.headers.get("content-type") || "";
+    const requestLength = Number(req.headers.get("content-length") || 0);
+    const isMultipart = contentType.includes("multipart/form-data");
+    if (requestLength > (isMultipart ? 45 : 0.25) * 1024 * 1024) {
+      return json({ ok: false, error: "The request is larger than the allowed upload limit." }, 413);
+    }
     let action = "";
     let payload: Record<string, unknown> = {};
     let files: File[] = [];
 
-    if (contentType.includes("multipart/form-data")) {
+    if (isMultipart) {
       const form = await req.formData();
       action = clean(form.get("action"), 40);
-      try { payload = JSON.parse(clean(form.get("payload"), 30000)); }
+      try { payload = JSON.parse(clean(form.get("payload"), 60000)); }
       catch { return json({ ok: false, error: "Invalid request data." }, 400); }
       files = form.getAll("references").filter((x): x is File => x instanceof File);
     } else {
@@ -235,6 +240,27 @@ Deno.serve(async (req) => {
     if (action === "custom") {
       const concept = String(payload.concept || "").trim();
       const license = String(payload.license_type || "");
+      const fieldLimits: Record<string, number> = {
+        character_name: 120, category: 80, concept: 12000, appearance: 5000,
+        colors: 2000, clothing: 5000, theme: 2000, instructions: 12000, links: 5000,
+      };
+      for (const [field, limit] of Object.entries(fieldLimits)) {
+        const value = payload[field];
+        if (value !== undefined && value !== null && typeof value !== "string") {
+          return json({ ok: false, error: "Custom Adopt text fields must contain plain text." }, 400);
+        }
+        if (typeof value === "string" && value.length > limit) {
+          return json({ ok: false, error: `The ${field.replaceAll("_", " ")} field exceeds its ${limit}-character limit.` }, 400);
+        }
+        if (typeof value === "string") payload[field] = value.trim();
+      }
+      const links = String(payload.links || "").split(/\r?\n/).map((link) => link.trim()).filter(Boolean);
+      if (links.some((link) => {
+        try { return !["http:", "https:"].includes(new URL(link).protocol); }
+        catch { return true; }
+      })) {
+        return json({ ok: false, error: "External references must be valid HTTP or HTTPS links." }, 400);
+      }
       if (!concept || concept.length > 12000 ||
           !["Personal Use", "Commercial Use", "Full Rights Transfer"].includes(license) ||
           files.length > 8) {
