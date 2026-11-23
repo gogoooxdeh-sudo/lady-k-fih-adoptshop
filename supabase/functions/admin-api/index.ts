@@ -515,6 +515,32 @@ metadata: { image_count: body.images.length },
 return respond({ ok: true, image_count: body.images.length });
 }
 
+async function updateStoreVisibility(body: Record<string, unknown>) {
+  const allowed = ["Public", "Temporarily Closed", "Hidden from Public"];
+  const visibility = typeof body.store_visibility === "string" ? body.store_visibility : "";
+  if (!allowed.includes(visibility)) {
+    return respond({ ok: false, error: "Choose a valid store availability status." }, 400);
+  }
+  const { data, error } = await supabase
+    .from("shop_settings")
+    .upsert({
+      setting_key: "store_visibility",
+      setting_value: visibility,
+      updated_at: new Date().toISOString(),
+    }, { onConflict: "setting_key" })
+    .select()
+    .single();
+  if (error) return respond({ ok: false, error: error.message }, 400);
+  await supabase.from("activity_log").insert({
+    entity_type: "shop_settings",
+    entity_id: data.id,
+    action: "store_visibility_updated",
+    description: "Store availability changed to " + visibility,
+    metadata: { store_visibility: visibility },
+  });
+  return respond({ ok: true, data });
+}
+
 async function updateAdopt(body: Record<string, unknown>) {
 if (!validUuid(body.id) || !isObject(body.values)) {
 return respond({ ok: false, error: "Invalid adopt update." }, 400);
@@ -1166,6 +1192,9 @@ return await saveAdoptImages(body);
 
 case "update-adopt":
 return await updateAdopt(body);
+
+case "update-store-visibility":
+return await updateStoreVisibility(body);
 
 case "create-manual-sale":
 return await createManualSale(body);
