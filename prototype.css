@@ -51,3 +51,8 @@
 .integrated-certificate-preview .cert-portrait img{object-fit:contain!important;}
 .integrated-certificate-preview .portrait-caption{max-width:100%;overflow-wrap:anywhere;font-size:clamp(5px,.9vw,8px);}
 @media(max-width:760px){.integrated-certificate-preview .certificate{min-width:0;width:100%;aspect-ratio:1.414/1;padding:7px;border-width:4px}.integrated-certificate-preview .cert-inner{grid-template-columns:minmax(0,1fr) minmax(48px,21%);gap:4px;padding:7px}.integrated-certificate-preview .certificate:before,.integrated-certificate-preview .certificate:after{font-size:7px;letter-spacing:5px}.integrated-certificate-preview .cert-copy p{font-size:clamp(5px,1.55vw,7px);margin:2px}.integrated-certificate-preview .cert-copy h2{font-size:clamp(13px,4.6vw,22px)}.integrated-certificate-preview .cert-copy .cert-brand{font-size:clamp(7px,2vw,10px)}.integrated-certificate-preview .seal{width:clamp(43px,14vw,64px);height:clamp(43px,14vw,64px);font-size:clamp(5px,1.6vw,7px);box-shadow:0 0 0 3px #f4f9fd,0 0 0 4px #b5d1e8}.integrated-certificate-preview .cert-portrait{width:clamp(40px,12vw,58px);height:clamp(40px,12vw,58px);margin:6px auto 0}}
+
+/* Private Telegram notification controls */
+.notification-preferences{display:grid;grid-template-columns:1fr;gap:10px;margin:12px 0 16px;padding:12px;border:1px solid #e1ebf4;background:#f8fbff;border-radius:10px}
+.notification-preferences .checkline{font-size:11px;line-height:1.45}
+.notification-preferences .checkline input{width:15px;height:15px;flex:0 0 15px}
