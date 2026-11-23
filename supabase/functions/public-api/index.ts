@@ -156,13 +156,22 @@ Deno.serve(async (req) => {
             isMain: image.is_main,
           });
         }
+        const publicFileLabels = (Array.isArray(row.files) ? row.files : [])
+          .map((item: unknown) => typeof item === "string"
+            ? item.trim()
+            : item && typeof item === "object" && "name" in item && typeof (item as { name?: unknown }).name === "string"
+              ? (item as { name: string }).name.trim()
+              : "")
+          .filter((label: string) => label.length > 0 && label.length <= 120 &&
+            !/^(https?:\/\/|www\.|data:|blob:)/i.test(label) &&
+            !label.includes("/") && !label.includes("\\"))
+          .slice(0, 30);
         items.push({
           id: row.adopt_code, name: row.name, category: row.category || "Other",
           price: Number(row.price || 0), status: row.status, publicVisible: row.public_visible,
           archiveVisible: row.archive_visible, symbol: row.symbol || "✧",
-          description: row.description || "", files: row.files || [], tags: row.tags || [],
+          description: row.description || "", files: publicFileLabels, tags: row.tags || [],
           featured: !!row.featured, images, mainImage: Math.max(0, images.findIndex((x) => x.isMain)),
-          databaseId: row.id,
         });
       }
       return json({ ok: true, adopts: items, storeVisibility });
