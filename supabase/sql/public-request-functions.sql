@@ -115,14 +115,14 @@ begin
 
   insert into public.custom_orders(
     order_code,customer_id,character_name,category,concept,appearance,colors,
-    clothing,theme,instructions,links,license_type,license_fee,status,terms_accepted,metadata
+    clothing,theme,instructions,links,license_type,license_fee,quote_base,status,terms_accepted,metadata
   ) values (
     v_code,v_customer_id,nullif(trim(p_payload->>'character_name'),''),
     p_payload->>'category',trim(p_payload->>'concept'),p_payload->>'appearance',
     p_payload->>'colors',p_payload->>'clothing',p_payload->>'theme',
     p_payload->>'instructions',p_payload->>'links',p_payload->>'license_type',
-    v_license_fee,'New Request',true,
-    jsonb_build_object('source','public-shop','submitted_at',now())
+    v_license_fee,37.00,'New Request',true,
+    jsonb_build_object('source','public-shop','submitted_at',now(),'default_quote_base',37.00)
   ) returning id into v_order_id;
 
   for v_file in select value from jsonb_array_elements(p_files)
