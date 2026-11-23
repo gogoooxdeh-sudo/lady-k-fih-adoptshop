@@ -1127,7 +1127,10 @@ return await saveAdoptImages(body);
 case "update-adopt":
 return await updateAdopt(body);
 
-case "create-manual-sale":\nreturn await createManualSale(body);\n\ncase "confirm-purchase-payment":
+case "create-manual-sale":
+return await createManualSale(body);
+
+case "confirm-purchase-payment":
 return await confirmPurchasePayment(body);
 
 case "update-purchase-request":
