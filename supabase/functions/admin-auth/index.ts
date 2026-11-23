@@ -383,6 +383,10 @@ return response(
 }
 
 try {
+const contentLength = Number(req.headers.get("content-length") || 0);
+if (contentLength > 8192) {
+return response({ ok: false, error: "Authentication request is too large." }, 413);
+}
 const body = await req.json();
 
 if (!body || typeof body !== "object" || Array.isArray(body)) {
