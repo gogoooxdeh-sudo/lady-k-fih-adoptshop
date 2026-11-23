@@ -15,6 +15,21 @@ function escapeTelegramHtml(value: unknown): string {
 }
 
 async function notifyTelegram(message: string): Promise<void> {
+  const category = message.includes("Ownership transfer") ? "ownership_transfer"
+    : message.includes("Manual sale") ? "manual_sale"
+    : message.toLowerCase().includes("payment confirmed") ? "payment_confirmation"
+    : message.includes("Certificate approved") || message.includes("Certificate rejected") ? "certificate_review"
+    : message.toLowerCase().includes("delivery completed") ? "delivery_complete"
+    : message.includes("returned to shop") ? "returned_to_shop" : "other";
+  const { data: preferenceRow, error: preferenceError } = await supabase
+    .from("shop_settings").select("setting_value")
+    .eq("setting_key", "telegram_notifications").maybeSingle();
+  const preferences = preferenceRow?.setting_value && typeof preferenceRow.setting_value === "object"
+    ? preferenceRow.setting_value as Record<string, unknown> : {};
+  if (!preferenceError && preferences[category] === false) {
+    console.info("[telegram] Notification disabled by administrator preference:", category);
+    return;
+  }
   const token = Deno.env.get("TELEGRAM_BOT_TOKEN");
   const chatId = Deno.env.get("TELEGRAM_CHAT_ID");
   if (!token || !chatId) {
@@ -513,6 +528,37 @@ description: "Adoptable artwork updated from admin panel",
 metadata: { image_count: body.images.length },
 });
 return respond({ ok: true, image_count: body.images.length });
+}
+
+async function updateTelegramPreferences(body: Record<string, unknown>) {
+  const keys = [
+    "purchase_request", "custom_request", "manual_sale", "ownership_transfer",
+    "payment_confirmation", "certificate_review", "delivery_complete", "returned_to_shop",
+  ] as const;
+  if (!isObject(body.notification_preferences)) {
+    return respond({ ok: false, error: "Notification preferences are required." }, 400);
+  }
+  const input = body.notification_preferences as Record<string, unknown>;
+  const preferences: Record<string, boolean> = {};
+  for (const key of keys) {
+    if (typeof input[key] !== "boolean") {
+      return respond({ ok: false, error: "Every notification preference must be enabled or disabled." }, 400);
+    }
+    preferences[key] = input[key] as boolean;
+  }
+  const { data, error } = await supabase.from("shop_settings").upsert({
+    setting_key: "telegram_notifications",
+    setting_value: preferences,
+    updated_at: new Date().toISOString(),
+  }, { onConflict: "setting_key" }).select().single();
+  if (error) return respond({ ok: false, error: error.message }, 400);
+  await supabase.from("activity_log").insert({
+    entity_type: "shop_settings", entity_id: data.id,
+    action: "telegram_preferences_updated",
+    description: "Private Telegram notification preferences updated",
+    metadata: preferences,
+  });
+  return respond({ ok: true, data });
 }
 
 async function updateStoreVisibility(body: Record<string, unknown>) {
@@ -1195,6 +1241,9 @@ return await updateAdopt(body);
 
 case "update-store-visibility":
 return await updateStoreVisibility(body);
+
+case "update-telegram-preferences":
+return await updateTelegramPreferences(body);
 
 case "create-manual-sale":
 return await createManualSale(body);
