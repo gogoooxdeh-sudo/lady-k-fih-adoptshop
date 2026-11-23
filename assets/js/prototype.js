@@ -40,6 +40,11 @@ async function loadAdminData(){
  const loaded=await Promise.all(resources.map(loadResource));
  const data=Object.fromEntries(resources.map((name,i)=>[name,loaded[i]]));
  const savedVisibility=data.shop_settings.find(x=>x.setting_key==='store_visibility')?.setting_value;
+ const notificationDefaults={purchase_request:true,custom_request:true,manual_sale:true,ownership_transfer:true,payment_confirmation:true,certificate_review:true,delivery_complete:true,returned_to_shop:true};
+ const savedNotifications=data.shop_settings.find(x=>x.setting_key==='telegram_notifications')?.setting_value;
+ const notificationPreferences={...notificationDefaults,...(savedNotifications&&typeof savedNotifications==='object'?savedNotifications:{})};
+ Object.entries(notificationPreferences).forEach(([key,value])=>{const el=$('#notify-'+key.replaceAll('_','-'));if(el)el.checked=value!==false});
+ const notificationStatus=$('#admin-notification-status');if(notificationStatus)notificationStatus.textContent=Object.values(notificationPreferences).every(Boolean)?'All notification types are enabled.':'Some notification types are disabled.';
  storeVisibility=['Public','Temporarily Closed','Hidden from Public'].includes(String(savedVisibility))?String(savedVisibility):'Public';
  const visibilitySelect=$('#admin-store-visibility');if(visibilitySelect)visibilitySelect.value=storeVisibility;
  const visibilityStatus=$('#admin-store-visibility-status');if(visibilityStatus)visibilityStatus.textContent='Current status: '+storeVisibility+'. This setting controls public visibility and whether new requests are accepted.';
@@ -686,6 +691,19 @@ $('#admin-save-store-visibility').addEventListener('click',async()=>{
   toast('Store availability saved to Supabase.',true);
  }catch(error){toast(error?.message||'Store availability could not be saved.',true)}
  finally{button.disabled=false;button.textContent='Save Store Availability'}
+});
+$('#admin-save-notification-preferences').addEventListener('click',async()=>{
+ const button=$('#admin-save-notification-preferences');
+ const keys=['purchase_request','custom_request','manual_sale','ownership_transfer','payment_confirmation','certificate_review','delivery_complete','returned_to_shop'];
+ const preferences=Object.fromEntries(keys.map(key=>[key,$('#notify-'+key.replaceAll('_','-'))?.checked===true]));
+ if(!confirm('Save these private Telegram notification preferences?'))return;
+ button.disabled=true;button.textContent='Saving…';
+ try{
+  await window.LKFBackend.admin('update-telegram-preferences',{notification_preferences:preferences});
+  await loadAdminData();
+  toast('Telegram notification preferences saved to Supabase.',true);
+ }catch(error){toast(error?.message||'Notification preferences could not be saved.',true)}
+ finally{button.disabled=false;button.textContent='Save Notification Preferences'}
 });
 $('#certificate-select').addEventListener('change',()=>{certificateSelection=$('#certificate-select').value;$('#certificate-area').innerHTML='';const ok=!!getCertificate();$('#certificate-preview').disabled=!ok;$('#certificate-download').disabled=!ok});$('#certificate-preview').addEventListener('click',showCertificate);$('#certificate-download').addEventListener('click',()=>printCertificate());$('#certificate-local-download').addEventListener('click',()=>downloadCertificate());$('#custom-certificate-select').addEventListener('change',()=>{$('#custom-certificate-area').innerHTML='';const ok=!!getCertificate($('#custom-certificate-select').value);$('#custom-certificate-preview').disabled=!ok;$('#custom-certificate-download').disabled=!ok});$('#custom-certificate-preview').addEventListener('click',showCustomCertificate);$('#custom-certificate-download').addEventListener('click',printCustomCertificate);$('#custom-certificate-local-download').addEventListener('click',()=>downloadCertificate($('#custom-certificate-select').value));window.addEventListener('popstate',()=>{const p=location.hash.slice(1).split('#')[0];if(['home','available','details','custom','archive','information','contact'].includes(p)&&p!==currentPage){goPage(p,{historyPush:false});if(p==='details'){const a=adopts.find(x=>x.id===currentAdoptId&&x.status!=='Hidden')||adopts.find(x=>x.status==='Available');if(a){currentAdoptId=a.id;renderDetail(a)}}}});window.addEventListener('keydown',e=>{if(e.key==='Escape'){document.querySelector('.modal-backdrop')?.remove();$('#public-nav').classList.remove('open');$('#admin-sidebar').classList.remove('open')}});
 initCustomForm();$('#year').textContent=new Date().getFullYear();const initialPage=location.hash.slice(1).split('#')[0]||'home';goPage(initialPage==='details'?'home':initialPage,{historyPush:false,scroll:false});renderAll();loadPublicCatalog();
