@@ -123,12 +123,28 @@
       });
     },
 
-    async publicRequest(action, params = {}) {
-      // Public submission endpoint will be added as a separate Edge Function.
-      return await invoke('public-api', {
-        ...params,
-        action,
+    async publicRequest(action, payload = {}) {
+      return await invoke('public-api', { action, payload });
+    },
+
+    async publicCustomRequest(payload, files = []) {
+      const form = new FormData();
+      form.append('action', 'custom');
+      form.append('payload', JSON.stringify(payload));
+      for (const file of files) form.append('references', file, file.name);
+      const response = await fetch(`${SUPABASE_URL}/functions/v1/public-api`, {
+        method: 'POST',
+        headers: {
+          apikey: SUPABASE_PUBLISHABLE_KEY,
+          Authorization: `Bearer ${SUPABASE_PUBLISHABLE_KEY}`,
+        },
+        body: form,
       });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok || !result?.ok) {
+        throw new Error(result?.error || 'Custom request could not be submitted.');
+      }
+      return result;
     },
 
     clearLocalSession() {
