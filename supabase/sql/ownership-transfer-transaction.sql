@@ -20,6 +20,7 @@ DECLARE
   v_request public.purchase_requests%rowtype;
   v_current public.ownership_records%rowtype;
   v_customer_id uuid;
+  v_current_owner_email text;
   v_old_certificate_id uuid;
   v_old_certificate_code text;
   v_new_ownership_id uuid;
@@ -59,20 +60,18 @@ BEGIN
     RAISE EXCEPTION 'The original purchase and current ownership record do not match.';
   END IF;
 
-  PERFORM pg_advisory_xact_lock(hashtextextended(v_email, 0));
-  SELECT id INTO v_customer_id FROM public.customers
-  WHERE lower(email) = v_email ORDER BY created_at ASC LIMIT 1 FOR UPDATE;
-  IF v_customer_id IS NULL THEN
-    INSERT INTO public.customers(full_name, email, discord_username)
-    VALUES (v_full_name, v_email, v_discord) RETURNING id INTO v_customer_id;
-  ELSE
-    UPDATE public.customers SET full_name = v_full_name,
-      discord_username = coalesce(v_discord, discord_username), updated_at = v_now
-    WHERE id = v_customer_id;
-  END IF;
-  IF v_customer_id = v_current.customer_id THEN
+  SELECT email INTO v_current_owner_email
+  FROM public.customers WHERE id = v_current.customer_id;
+  IF lower(coalesce(v_current_owner_email, '')) = v_email THEN
     RAISE EXCEPTION 'The new owner must be different from the current owner.';
   END IF;
+
+  PERFORM pg_advisory_xact_lock(hashtextextended(v_email, 0));
+  -- Create a distinct customer snapshot for the new owner. Never overwrite a
+  -- customer row that may be referenced by the previous owner's order history.
+  INSERT INTO public.customers(full_name, email, discord_username)
+  VALUES (v_full_name, v_email, v_discord)
+  RETURNING id INTO v_customer_id;
 
   SELECT id, certificate_code INTO v_old_certificate_id, v_old_certificate_code
   FROM public.certificates
