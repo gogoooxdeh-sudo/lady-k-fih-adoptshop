@@ -692,6 +692,16 @@ $('#admin-save-store-visibility').addEventListener('click',async()=>{
  }catch(error){toast(error?.message||'Store availability could not be saved.',true)}
  finally{button.disabled=false;button.textContent='Save Store Availability'}
 });
+$('#admin-test-telegram').addEventListener('click',async()=>{
+ const button=$('#admin-test-telegram');
+ if(!confirm('Send a test message to the private Telegram chat configured in Supabase?'))return;
+ button.disabled=true;button.textContent='Sending…';
+ try{
+  await window.LKFBackend.admin('test-telegram');
+  toast('Telegram test message sent. Check your private admin chat.',true);
+ }catch(error){toast(error?.message||'Telegram test message could not be sent.',true)}
+ finally{button.disabled=false;button.textContent='Send Test Notification'}
+});
 $('#admin-save-notification-preferences').addEventListener('click',async()=>{
  const button=$('#admin-save-notification-preferences');
  const keys=['purchase_request','custom_request','manual_sale','ownership_transfer','payment_confirmation','certificate_review','delivery_complete','returned_to_shop'];
