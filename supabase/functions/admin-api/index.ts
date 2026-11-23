@@ -1347,6 +1347,10 @@ return respond({ ok: false, error: "Server configuration is incomplete." }, 500)
 }
 
 try {
+const contentLength = Number(req.headers.get("content-length") || 0);
+if (contentLength > 1024 * 1024) {
+return respond({ ok: false, error: "Administrative request exceeds the 1 MB limit." }, 413);
+}
 const body = await req.json();
 
 if (!isObject(body)) {
