@@ -98,7 +98,7 @@ Deno.serve(async (req) => {
     const allowedVisibility = ["Public", "Temporarily Closed", "Hidden from Public"];
     const storeVisibility = allowedVisibility.includes(String(visibilityRow?.setting_value))
       ? String(visibilityRow?.setting_value)
-      : "Public";
+      : "Temporarily Closed";
 
     if (action !== "catalog") {
     const fullName = String(payload.full_name || "").trim();
