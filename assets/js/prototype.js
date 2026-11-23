@@ -346,7 +346,7 @@ function openAdoptForm(a=null){
    await loadAdminData();close();renderAll();
    toast((a?'Adopt updated':'Adopt created')+' and saved to the secure inventory.');
   }catch(error){
-   if(!imagesCommitted&&pendingUploadPaths.length&&persistedId){const paths=[...pendingUploadPaths];pendingUploadPaths=[];try{await window.LKFBackend.admin('cleanup-adopt-image-uploads',{adopt_id:persistedId,paths})}catch(cleanupError){console.error('[AdoptShop] Temporary image cleanup failed:',cleanupError)}}
+   if(!imagesCommitted&&pendingUploadPaths.length&&persistedId){const paths=[...pendingUploadPaths];try{await window.LKFBackend.admin('cleanup-adopt-image-uploads',{adopt_id:persistedId,paths});pendingUploadPaths=[]}catch(cleanupError){console.error('[AdoptShop] Temporary image cleanup failed:',cleanupError)}}
    back.querySelector('#adopt-form-errors').innerHTML=errorBox([error?.message||'The adoptable could not be saved.']);
    button.disabled=false;button.textContent=persistedId?'Retry Save':'Add Adopt';
   }
