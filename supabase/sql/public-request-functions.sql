@@ -36,7 +36,7 @@ begin
   values (trim(p_payload->>'full_name'), lower(trim(p_payload->>'email')), trim(p_payload->>'discord'))
   returning id into v_customer_id;
 
-  if p_payload->>'license_type' not in ('Personal Use','Commercial Use','Full Rights Transfer') then
+  if coalesce(p_payload->>'license_type','') not in ('Personal Use','Commercial Use','Full Rights Transfer') then
     raise exception 'Invalid license selection';
   end if;
   v_license_fee := case p_payload->>'license_type'
@@ -98,7 +98,7 @@ begin
     raise exception 'A maximum of 8 reference images is allowed';
   end if;
 
-  if p_payload->>'license_type' not in ('Personal Use','Commercial Use','Full Rights Transfer') then
+  if coalesce(p_payload->>'license_type','') not in ('Personal Use','Commercial Use','Full Rights Transfer') then
     raise exception 'Invalid license selection';
   end if;
   v_license_fee := case p_payload->>'license_type'
