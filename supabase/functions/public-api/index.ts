@@ -112,6 +112,9 @@ Deno.serve(async (req) => {
     }
 
     if (action === "catalog") {
+      if (storeVisibility === "Hidden from Public") {
+        return json({ ok: true, adopts: [], storeVisibility });
+      }
       const { data: rows, error: catalogError } = await supabase
         .from("adopts")
         .select("*")
