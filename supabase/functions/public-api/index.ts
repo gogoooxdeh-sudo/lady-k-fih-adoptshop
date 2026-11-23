@@ -79,6 +79,17 @@ Deno.serve(async (req) => {
       payload = body?.payload || {};
     }
 
+    const { data: visibilityRow, error: visibilityError } = await supabase
+      .from("shop_settings")
+      .select("setting_value")
+      .eq("setting_key", "store_visibility")
+      .maybeSingle();
+    if (visibilityError) throw visibilityError;
+    const allowedVisibility = ["Public", "Temporarily Closed", "Hidden from Public"];
+    const storeVisibility = allowedVisibility.includes(String(visibilityRow?.setting_value))
+      ? String(visibilityRow?.setting_value)
+      : "Public";
+
     if (action !== "catalog") {
     const fullName = String(payload.full_name || "").trim();
     const email = String(payload.email || "").trim();
@@ -126,7 +137,16 @@ Deno.serve(async (req) => {
           databaseId: row.id,
         });
       }
-      return json({ ok: true, adopts: items });
+      return json({ ok: true, adopts: items, storeVisibility });
+    }
+
+    if ((action === "purchase" || action === "custom") && storeVisibility !== "Public") {
+      return json({
+        ok: false,
+        error: storeVisibility === "Temporarily Closed"
+          ? "The shop is temporarily closed and is not accepting requests."
+          : "The shop is currently unavailable and is not accepting requests.",
+      }, 409);
     }
 
     if (action === "purchase") {
