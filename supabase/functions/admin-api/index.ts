@@ -284,6 +284,15 @@ const { data: signed, error: signedError } = await supabase.storage
 .createSignedUrl(storagePath, 1800);
 return { ...row, signed_url: signedError ? null : signed?.signedUrl ?? null };
 }));
+} else if (table === "custom_orders") {
+outputData = await Promise.all(outputData.map(async (row: Record<string, unknown>) => {
+const storagePath = typeof row.final_artwork_path === "string" ? row.final_artwork_path : "";
+if (!storagePath) return { ...row, final_artwork_url: null };
+const { data: signed, error: signedError } = await supabase.storage
+.from("private-deliveries")
+.createSignedUrl(storagePath, 1800);
+return { ...row, final_artwork_url: signedError ? null : signed?.signedUrl ?? null };
+}));
 }
 
 return respond({
