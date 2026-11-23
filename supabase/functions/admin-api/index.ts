@@ -457,14 +457,17 @@ if (!adopt) return respond({ ok: false, error: "Adoptable not found." }, 404);
 const { data: current, error: currentError } = await supabase.from("adopt_images")
 .select("id, storage_path").eq("adopt_id", adoptId);
 if (currentError) return respond({ ok: false, error: currentError.message }, 400);
-const currentById = new Map((current || []).map((row: Record<string, unknown>) => [String(row.id), row]));
+const currentById = new Map<string, Record<string, unknown>>();
+for (const row of current || []) currentById.set(String(row.id), row as Record<string, unknown>);
 const keepIds = new Set<string>();
 const newRows: Record<string, unknown>[] = [];
 const updateRows: { id: string; sort_order: number; is_main: boolean }[] = [];
+let mainCount = 0;
 for (let index = 0; index < body.images.length; index++) {
 const item = body.images[index];
 if (!isObject(item)) return respond({ ok: false, error: "Invalid image entry." }, 400);
 const isMain = item.is_main === true;
+if (isMain) mainCount++;
 if (typeof item.id === "string") {
 const row = currentById.get(item.id);
 if (!row || keepIds.has(item.id)) return respond({ ok: false, error: "An image does not belong to this adoptable." }, 400);
@@ -482,6 +485,9 @@ return respond({ ok: false, error: "An uploaded image has invalid metadata." }, 
 }
 newRows.push({ adopt_id: adoptId, storage_path: path, original_filename: filename, mime_type: mime, file_size: size, sort_order: index, is_main: isMain });
 }
+}
+if ((body.images.length === 0 && mainCount !== 0) || (body.images.length > 0 && mainCount !== 1)) {
+return respond({ ok: false, error: "Choose exactly one main artwork image." }, 400);
 }
 for (const row of updateRows) {
 const { error } = await supabase.from("adopt_images").update({ sort_order: row.sort_order, is_main: row.is_main }).eq("id", row.id).eq("adopt_id", adoptId);
