@@ -90,7 +90,7 @@ async function loadAdminData(){
   const last=rows[rows.length-1],lastCert=certificateForRow(last.row);
   const current={name:last.customer?.full_name||'',email:last.customer?.email||'',discord:last.customer?.discord_username||'',license:last.row.license_type||'',date:last.row.acquired_at||'',price:Number(last.row.acquisition_price||0),certificate:lastCert?.certificate_code||'',rowId:last.row.id};
   const adopt=last.adopt,custom=data.custom_orders.find(z=>z.id===last.row.custom_order_id);
-  return {adoptId:key,name:adopt?.name||custom?.character_name||key,originalAcquisitionDate:rows[0].row.acquired_at||'',current,history:rows.map(v=>{const cert=certificateForRow(v.row);return {name:v.customer?.full_name||'',license:v.row.license_type||'',date:v.row.acquired_at||'',price:Number(v.row.acquisition_price||0),certificate:cert?.certificate_code||'',certificateData:cert?.certificate_data||{},certificateId:cert?.id||null,certificateStatus:cert?.status||'',kind:v.row.metadata?.transfer_from_ownership_id?'Ownership transfer':v.row.custom_order_id?'Custom design':'Original ownership',metadata:v.row.metadata||{},ownershipId:v.row.id}})};
+  return {adoptId:key,name:adopt?.name||custom?.character_name||key,originalAcquisitionDate:rows[0].row.acquired_at||'',current,history:rows.map(v=>{const cert=certificateForRow(v.row);return {name:v.customer?.full_name||'',license:v.row.license_type||'',date:v.row.acquired_at||'',price:Number(v.row.acquisition_price||0),certificate:cert?.certificate_code||'',certificateData:cert?.certificate_data||{},certificateId:cert?.id||null,certificateStatus:cert?.status||'',databaseId:v.row.purchase_request_id||null,kind:v.row.metadata?.transfer_from_ownership_id?'Ownership transfer':v.row.custom_order_id?'Custom design':'Original ownership',metadata:v.row.metadata||{},ownershipId:v.row.id}})};
  });
  data.ownership_records.forEach(x=>{const a=adoptsByUuid.get(x.adopt_id);if(a){const owner=ownership.find(o=>o.adoptId===a.adopt_code);if(owner){a.owner=owner.current;a.ownershipHistory=owner.history}}});
  activities=data.activity_log.map(x=>({id:x.id,text:x.description||x.action||'Activity',time:x.created_at||'',kind:x.entity_type||'activity',action:x.action,metadata:x.metadata||{}}));
@@ -658,8 +658,9 @@ openCertificatePreview=function(key){
  if(key.startsWith('purchase:'))record=purchaseRequests.find(r=>r.id===key.slice(9));
  else if(key.startsWith('custom:')){record=customRequests.find(r=>r.id===key.slice(7));kind='custom'}
  else if(key.startsWith('owner:')){const [,id,i]=key.split(':');record=ownership.find(o=>o.adoptId===id)?.history?.[Number(i)]}
- const approved=record?.certificateStatus==='Approved'||record?.certificateApproved===true;
- const body=`<div class="integrated-certificate-preview">${certificateHtml(d)}</div><p class="fine">Artist review preview. No certificate is delivered or sent to a client.</p>${approved?'<p class="certificate-approved-note">Approved by the artist for final use.</p>':'<p class="certificate-review-note">Needs your review. Approval is saved to the certificate record.</p>'}`;
+ const approved=record?.certificateStatus==='Approved'||record?.certificateApproved===true,superseded=record?.certificateStatus==='Superseded';
+ const reviewNote=superseded?'<p class="fine">This certificate was superseded by a later ownership transfer and is retained only as historical record.</p>':approved?'<p class="certificate-approved-note">Approved by the artist for final use.</p>':'<p class="certificate-review-note">Needs your review. Approval is saved to the certificate record.</p>';
+ const body=`<div class="integrated-certificate-preview">${certificateHtml(d)}</div><p class="fine">Artist review preview. No certificate is delivered or sent to a client.</p>${reviewNote}`;
  const actions=[
   {label:'Print / Save as PDF',action:m=>{m.remove();printCertificate(key)}},
   {label:'Download HTML',action:m=>{m.remove();downloadCertificate(key)}},
