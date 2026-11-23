@@ -50,6 +50,74 @@ function pill(status){return `<span class="status-pill ${esc(String(status).toLo
 function artMarkup(a,index=null,compact=false){const ix=index??(a.mainImage||0),im=a.images?.[ix];if(im?.url)return `<img src="${esc(im.url)}" alt="${esc(a.name)} — artwork ${ix+1}" style="width:100%;height:100%;object-fit:contain">`;return `<div class="placeholder-art"><span>${esc(a.symbol||'✧')}<br>ARTWORK<br>PREVIEW</span></div>`}
 function card(a,{featured=false}={}){const purchasable=a.status==='Available'&&a.publicVisible!==false&&storeVisibility==='Public';return `<article class="adopt-card"><div class="card-art">${artMarkup(a)}</div><div class="card-body"><div class="card-overline"><span>${esc(a.category)}</span>${pill(a.status)}</div><h3 class="card-title">${esc(a.name)}</h3><p class="card-meta">Adopt ID · ${esc(a.id)}</p><p class="card-detail">${esc((a.tags||[]).slice(0,3).join(' · ')||a.category)}</p><p class="card-price">Base price · ${money(a.price)}</p></div><div class="card-actions"><button class="btn small ${featured?'primary':''}" data-open-detail="${esc(a.id)}">${featured?'View Adopt':'View Details'}</button>${!featured&&purchasable?`<button class="btn small primary" data-buy="${esc(a.id)}">Request</button>`:!featured&&a.status==='Available'?'<span class="fine">Not purchasable</span>':''}</div></article>`}
 function renderPublic(){const banner=$('#store-status-banner');if(banner){const hidden=storeVisibility==='Hidden from Public';$('#public-main').classList.toggle('hidden',hidden);banner.classList.toggle('hidden',storeVisibility==='Public');banner.textContent=storeVisibility==='Temporarily Closed'?'The shop is temporarily closed. Browse the catalog, but new requests are paused.':'The shop is currently unavailable.'}const available=adopts.filter(a=>a.status==='Available'&&a.publicVisible!==false),featured=available.filter(a=>a.featured),homeAvailable=featured.length?featured:available,sold=adopts.filter(a=>a.status==='Sold'&&a.archiveVisible!==false);$('#featured-carousel').innerHTML=homeAvailable.map(a=>card(a,{featured:true})).join('')||`<div class="home-featured-empty gingham"><span class="empty-star">✧</span><h3>No Available Adopts just now</h3><p>Every character is on a little journey. Bring an idea of your own to life with a custom design.</p><div class="actions"><a class="btn primary" href="#custom">Request a Custom Adopt →</a><a class="text-link" href="#available">Explore the catalog →</a></div></div>`;$('#home-sold-preview').innerHTML=sold.slice(0,3).map(a=>`<figure class="home-sold-preview-item"><div class="home-sold-preview-art">${artMarkup(a,null,true)}</div><figcaption><b>${esc(a.name)}</b><small>Found a new home ✧</small></figcaption></figure>`).join('')||'<p class="home-sold-empty">Past designs will find their way here soon. ✧</p>';renderCatalog();renderArchive();updateFeaturedControls()}
+
+async function loadAdminData(){
+ if(!window.LKFBackend?.ready)throw new Error('Supabase client is unavailable.');
+ const resources=['adopts','adopt_images','customers','purchase_requests','custom_orders','custom_reference_files','payments','ownership_records','certificates','custom_order_updates','activity_log','shop_settings'];
+ async function loadResource(resource){
+  const all=[];let page=0,total=0;
+  do{
+   const result=await window.LKFBackend.admin('list',{resource,page,limit:100});
+   if(!result?.ok||!Array.isArray(result.data))throw new Error('Could not load '+resource+'.');
+   all.push(...result.data);total=Number(result.total||0);page++;
+   if(page>100)throw new Error('Pagination limit reached while loading '+resource+'.');
+  }while(all.length<total);
+  return all;
+ }
+ const loaded=await Promise.all(resources.map(loadResource));
+ const data=Object.fromEntries(resources.map((name,i)=>[name,loaded[i]]));
+ const customers=new Map(data.customers.map(x=>[x.id,x]));
+ const adoptsByUuid=new Map(data.adopts.map(x=>[x.id,x]));
+ const adoptImages=new Map();
+ data.adopt_images.forEach(x=>{const arr=adoptImages.get(x.adopt_id)||[];arr.push({name:x.original_filename||'Artwork',url:x.signed_url||'',storagePath:x.storage_path||'',type:x.mime_type||'',size:Number(x.file_size||0),sortOrder:Number(x.sort_order||0),isMain:!!x.is_main});adoptImages.set(x.adopt_id,arr)});
+ adopts=data.adopts.map(x=>({id:x.adopt_code,name:x.name||'Untitled Adopt',category:x.category||'Other',price:Number(x.price||0),currency:x.currency||'USD',status:x.status||'Available',publicVisible:x.public_visible!==false,archiveVisible:x.archive_visible!==false,symbol:x.symbol||'✧',description:x.description||'',licenseInfo:x.license_info||'',files:Array.isArray(x.files)?x.files:[],tags:Array.isArray(x.tags)?x.tags:[],featured:!!x.featured,images:(adoptImages.get(x.id)||[]).sort((a,b)=>a.sortOrder-b.sortOrder),mainImage:Math.max(0,(adoptImages.get(x.id)||[]).findIndex(y=>y.isMain)),databaseId:x.id,metadata:x.metadata||{},owner:null,ownershipHistory:[]}));
+ const adoptByCode=new Map(adopts.map(x=>[x.id,x]));
+ const paymentByPurchase=new Map(),paymentByCustom=new Map();
+ data.payments.forEach(x=>{
+  const item={id:x.id,stage:x.stage||'Payment',amount:Number(x.amount||0),currency:x.currency||'USD',status:x.status||'Pending',method:x.payment_method||'',date:x.confirmed_at||x.created_at||'',notes:x.notes||''};
+  const target=x.purchase_request_id?paymentByPurchase:paymentByCustom,key=x.purchase_request_id||x.custom_order_id;
+  if(key){const arr=target.get(key)||[];arr.push(item);target.set(key,arr)}
+ });
+ purchaseRequests=data.purchase_requests.map(x=>{
+  const c=customers.get(x.customer_id)||{},a=adoptsByUuid.get(x.adopt_id)||{},pay=paymentByPurchase.get(x.id)||[];
+  const history=pay.map(p=>({stage:p.stage,amount:p.amount,status:p.status,date:p.date,method:p.method,notes:p.notes}));
+  const paid=!!x.paid;
+  const pending=!!x.payment_pending;
+  const result={id:x.request_code||x.id,databaseId:x.id,adoptDatabaseId:x.adopt_id,adoptId:a.adopt_code||'',fullName:c.full_name||'',email:c.email||'',discord:c.discord_username||'',license:x.license_type||'Personal Use',basePrice:Number(x.base_price||0),licenseFee:Number(x.license_fee||0),total:Number(x.total||0),status:x.status||'Pending Review',paymentStatus:x.payment_status||'Not Sent',invoiceSent:!!x.invoice_sent,paymentPending:pending,paid,paidDate:x.paid_at||'',delivered:!!x.delivered,termsAccepted:!!x.terms_accepted,date:x.created_at||'',paymentHistory:history,paymentMethod:history.filter(p=>p.method).map(p=>p.method).join(', '),reservationReleased:x.status==='Cancelled'&&a.status==='Available',metadata:x.metadata||{},sample:false};
+  result.certificate=(data.certificates.find(z=>z.purchase_request_id===x.id)||{}).certificate_code||'';
+  result.certificateApproved=(data.certificates.find(z=>z.purchase_request_id===x.id)||{}).status==='Approved';
+  return result;
+ });
+ const updatesByCustom=new Map();
+ data.custom_order_updates.forEach(x=>{const arr=updatesByCustom.get(x.custom_order_id)||[];arr.push(x);updatesByCustom.set(x.custom_order_id,arr)});
+ const refsByCustom=new Map();
+ data.custom_reference_files.forEach(x=>{const arr=refsByCustom.get(x.custom_order_id)||[];arr.push({name:x.original_filename||'Reference',size:Number(x.file_size||0),type:x.mime_type||'',url:x.signed_url||'',storagePath:x.storage_path||'',date:x.created_at||''});refsByCustom.set(x.custom_order_id,arr)});
+ customRequests=data.custom_orders.map(x=>{
+  const c=customers.get(x.customer_id)||{},pay=paymentByCustom.get(x.id)||[],updates=updatesByCustom.get(x.id)||[];
+  const history=pay.map(p=>({stage:p.stage,amount:p.amount,status:p.status,date:p.date,method:p.method,notes:p.notes}));
+  const cert=data.certificates.find(z=>z.custom_order_id===x.id)||{};
+  const total=Number(x.agreed_total??(Number(x.quote_base||0)+Number(x.license_fee||0)));
+  const status=x.status||'New Request';
+  return {id:x.order_code||x.id,databaseId:x.id,fullName:c.full_name||'',email:c.email||'',discord:c.discord_username||'',characterName:x.character_name||'',category:x.category||'Other',concept:x.concept||'',appearance:x.appearance||'',colors:x.colors||'',clothing:x.clothing||'',theme:x.theme||'',instructions:x.instructions||'',links:x.links||'',files:(refsByCustom.get(x.id)||[]).sort((a,b)=>a.date.localeCompare(b.date)),license:x.license_type||'Personal Use',licenseFee:Number(x.license_fee||0),status,adminStatus:status,quoteBase:Number(x.quote_base||0),agreedTotal:total,accepted:!['New Request','Pending Review','Clarification Requested','Rejected','Cancelled'].includes(status),quoteSent:!!x.quote_sent,quoteDate:x.quote_sent?x.updated_at||x.created_at:'',clientApprovedQuote:!!x.client_approved_quote,paymentPlan:x.payment_plan||'split',initialPaid:!!x.initial_paid,initialPaidDate:x.initial_paid_at||'',fullPaid:history.some(p=>String(p.stage).toLowerCase().includes('full')&&p.status==='Confirmed'),previewPresented:!!x.preview_presented,previewDate:x.preview_presented_at||'',finalApproved:!!x.final_approved,finalApprovalDate:x.final_approved_at||'',finalPaid:!!x.final_paid,finalPaidDate:x.final_paid_at||'',deliverySimulated:!!x.delivery_at,deliveryDate:x.delivery_at||'',finalArtwork:x.final_artwork_path?{name:'Final artwork',storagePath:x.final_artwork_path,url:''}:null,certificate:cert.certificate_code||'',certificateApproved:cert.status==='Approved',progress:status,progressHistory:updates.filter(u=>u.update_type==='Note').map(u=>({text:u.content,date:u.created_at})),notes:updates.filter(u=>u.update_type==='Note').map(u=>({text:u.content,date:u.created_at})),feedback:updates.filter(u=>u.update_type==='Feedback').map(u=>({text:u.content,date:u.created_at})),suggestions:updates.filter(u=>u.update_type==='Suggestion').map(u=>({text:u.content,status:u.review_status||'Pending Review',date:u.created_at})),paymentHistory:history,paymentMethod:history.filter(p=>p.method).map(p=>p.method).join(', '),date:x.created_at||'',termsAccepted:!!x.terms_accepted,sample:false,metadata:x.metadata||{}};
+ });
+ const ownershipGroups=new Map();
+ data.ownership_records.forEach(x=>{const a=adoptsByUuid.get(x.adopt_id),c=customers.get(x.customer_id),key=a?.adopt_code||('CUSTOM-'+(data.custom_orders.find(z=>z.id===x.custom_order_id)?.order_code||x.custom_order_id));const arr=ownershipGroups.get(key)||[];arr.push({row:x,customer:c,adopt:a});ownershipGroups.set(key,arr)});
+ ownership=Array.from(ownershipGroups.entries()).map(([key,rows])=>{
+  rows.sort((a,b)=>String(a.row.acquired_at).localeCompare(String(b.row.acquired_at)));
+  const last=rows[rows.length-1],current={name:last.customer?.full_name||'',email:last.customer?.email||'',discord:last.customer?.discord_username||'',license:last.row.license_type||'',date:last.row.acquired_at||'',price:Number(last.row.acquisition_price||0),certificate:''};
+  const cert=last.row.purchase_request_id?data.certificates.find(z=>z.purchase_request_id===last.row.purchase_request_id):data.certificates.find(z=>z.custom_order_id===last.row.custom_order_id);
+  current.certificate=cert?.certificate_code||'';
+  const adopt=last.adopt,custom=data.custom_orders.find(z=>z.id===last.row.custom_order_id);
+  return {adoptId:key,name:adopt?.name||custom?.character_name||key,originalAcquisitionDate:rows[0].row.acquired_at||'',current,history:rows.map((v)=>({name:v.customer?.full_name||'',license:v.row.license_type||'',date:v.row.acquired_at||'',price:Number(v.row.acquisition_price||0),certificate:'',kind:v.row.custom_order_id?'Custom design':'Ownership record',metadata:v.row.metadata||{}}))};
+ });
+ data.ownership_records.forEach(x=>{const a=adoptsByUuid.get(x.adopt_id);if(a){const owner=ownership.find(o=>o.adoptId===a.adopt_code);if(owner){a.owner=owner.current;a.ownershipHistory=owner.history}}});
+ activities=data.activity_log.map(x=>({id:x.id,text:x.description||x.action||'Activity',time:x.created_at||'',kind:x.entity_type||'activity',action:x.action,metadata:x.metadata||{}}));
+ normalizeCustomRecords();
+ refreshCategories();
+ renderAll();
+ return {counts:{adopts:adopts.length,purchases:purchaseRequests.length,custom:customRequests.length,payments:data.payments.length,ownership:ownership.length,certificates:data.certificates.length}};
+}
+
 async function loadPublicCatalog(){
  const grid=$('#available-grid'),featured=$('#featured-carousel');
  if(!window.LKFBackend?.ready){if(grid)grid.innerHTML='<p class="center-note">The shop catalog is temporarily unavailable.</p>';return}
@@ -149,7 +217,7 @@ function initCustomForm(){const form=$('#custom-form');customLicense='Personal U
 }
 async function openAdmin(){
  if(!window.LKFBackend?.ready||!(await window.LKFBackend.verify())){toast('Administrator session expired. Please sign in again.',true);return}
- const shell=$('#admin-shell');shell.classList.remove('hidden');document.body.style.overflow='hidden';adminGo('dashboard');renderAdmin();
+ const shell=$('#admin-shell');shell.classList.remove('hidden');document.body.style.overflow='hidden';try{await loadAdminData()}catch(error){console.error('[Lady K ★ Fih] Admin data load failed',error);toast('Could not load administrator records: '+(error?.message||'Unknown error'),true)}adminGo('dashboard');renderAdmin();
 }
 async function closeAdmin(){
  $('#admin-shell').classList.add('hidden');$('#admin-sidebar').classList.remove('open');$('#admin-overlay').classList.add('hidden');document.body.style.overflow='';
