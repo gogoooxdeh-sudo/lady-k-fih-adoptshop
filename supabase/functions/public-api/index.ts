@@ -59,6 +59,21 @@ async function notifyTelegram(message: string, client: any): Promise<void> {
 }
 
 
+async function publicRequestIpHash(req: Request, serviceKey: string): Promise<string> {
+  const forwarded = req.headers.get("x-forwarded-for");
+  const forwardedLast = forwarded?.split(",").map((part) => part.trim()).filter(Boolean).at(-1);
+  const ip = req.headers.get("cf-connecting-ip") ||
+    req.headers.get("x-real-ip") ||
+    forwardedLast || "unknown";
+  const digest = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(serviceKey + ":" + ip),
+  );
+  return Array.from(new Uint8Array(digest))
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
   if (req.method !== "POST") return json({ ok: false, error: "Method not allowed" }, 405);
@@ -160,6 +175,27 @@ Deno.serve(async (req) => {
           ? "The shop is temporarily closed and is not accepting requests."
           : "The shop is currently unavailable and is not accepting requests.",
       }, 409);
+    }
+
+    if (action === "purchase" || action === "custom") {
+      const ipHash = await publicRequestIpHash(req, serviceKey);
+      const { data: allowed, error: rateLimitError } = await supabase.rpc(
+        "public_register_request_attempt",
+        { p_ip_hash: ipHash, p_limit: 10, p_window_seconds: 3600 },
+      );
+      if (rateLimitError) {
+        console.error("[public-api] Request rate-limit check failed:", rateLimitError.message);
+        return json({ ok: false, error: "Request service temporarily unavailable. Please try again later." }, 503);
+      }
+      if (allowed !== true) {
+        return new Response(JSON.stringify({
+          ok: false,
+          error: "Too many requests from this network. Please try again later.",
+        }), {
+          status: 429,
+          headers: { ...cors, "Content-Type": "application/json", "Retry-After": "3600" },
+        });
+      }
     }
 
     if (action === "purchase") {
