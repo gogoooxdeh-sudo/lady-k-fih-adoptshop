@@ -88,6 +88,9 @@
 - [ ] 9 images, non-image files and files over 5 MB are rejected.
 - [ ] Failed uploads clean up previously uploaded references.
 - [ ] Quote and payment plan persist after reload.
+- [ ] Payment plan cannot be changed after any payment is confirmed.
+- [ ] A paid-order price adjustment requires a matching administrative history entry and preserves previous payment records.
+- [ ] Agreed total always equals design quote plus the fixed license fee.
 - [ ] Unpaid quote changes reset quote-sent and client-approval flags.
 - [ ] Full-payment plan accepts only one 100% payment.
 - [ ] Split plan accepts 60% initial payment and 40% final payment only after final approval.
