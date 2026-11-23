@@ -922,11 +922,29 @@ if ("metadata" in values && !isObject(values.metadata)) {
 return respond({ ok: false, error: "Purchase metadata must be an object." }, 400);
 }
 const { data: current, error: currentError } = await supabase
-.from("purchase_requests").select("paid, status").eq("id", body.id).maybeSingle();
+.from("purchase_requests").select("paid, status, invoice_sent, payment_pending, payment_status").eq("id", body.id).maybeSingle();
 if (currentError) return respond({ ok: false, error: currentError.message }, 400);
 if (!current) return respond({ ok: false, error: "Purchase request not found." }, 404);
-if (current.paid && ["Rejected", "Cancelled"].includes(String(values.status || ""))) {
-return respond({ ok: false, error: "A paid purchase request cannot be rejected or cancelled." }, 409);
+if (current.paid && "status" in values && values.status !== current.status) {
+return respond({ ok: false, error: "A paid purchase request's review status is locked." }, 409);
+}
+if (["Rejected", "Cancelled"].includes(current.status) && "status" in values && values.status !== current.status) {
+return respond({ ok: false, error: "A rejected or cancelled request cannot be reopened; preserve its history and create a new request instead." }, 409);
+}
+if (current.invoice_sent && values.invoice_sent === false) {
+return respond({ ok: false, error: "Invoice-sent confirmation cannot be reversed." }, 409);
+}
+if (current.payment_pending && values.payment_pending === false) {
+return respond({ ok: false, error: "Payment-pending confirmation cannot be reversed." }, 409);
+}
+if (values.payment_status === "Invoice Sent" && !(current.invoice_sent || values.invoice_sent === true)) {
+return respond({ ok: false, error: "Mark the invoice as sent before setting its payment status." }, 409);
+}
+if (values.payment_status === "Payment Pending" && !(current.payment_pending || values.payment_pending === true)) {
+return respond({ ok: false, error: "Mark payment as pending before setting its payment status." }, 409);
+}
+if (current.paid && ("invoice_sent" in values || "payment_pending" in values || "payment_status" in values)) {
+return respond({ ok: false, error: "Payment and invoice history are locked after payment confirmation." }, 409);
 }
 values.updated_at = new Date().toISOString();
 const { data, error } = await supabase
