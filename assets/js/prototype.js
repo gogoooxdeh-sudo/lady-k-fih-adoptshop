@@ -315,7 +315,7 @@ function openAdoptForm(a=null){
   back.querySelector('#adopt-form-errors').innerHTML=errorBox(errors);if(errors.length)return;
   if(!window.LKFBackend?.ready){back.querySelector('#adopt-form-errors').innerHTML=errorBox(['The secure inventory service is unavailable.']);return}
   const button=back.querySelector('#adopt-save-button');button.disabled=true;button.textContent='Saving securely…';
-  let uploadedForCommit=[];
+  let uploadedForCommit=[];imagesCommitted=false;
   try{
    const values={adopt_code:id,name,category:String(f.get('category')||'Other'),price,currency:'USD',status:a?.status||'Available',public_visible:a?a.publicVisible!==false:true,description:String(f.get('description')||'').trim(),license_info:String(f.get('licenseInfo')||'').trim(),tags:String(f.get('tags')||'').split(',').map(z=>z.trim()).filter(Boolean),files:String(f.get('files')||'').split(/\r?\n/).map(z=>z.trim()).filter(Boolean),featured:a?!!a.featured:false,archive_visible:a?a.archiveVisible!==false:true,symbol:x.symbol||'✧',metadata:a?.metadata||{}};
    let saved;
