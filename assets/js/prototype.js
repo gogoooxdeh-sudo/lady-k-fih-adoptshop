@@ -57,7 +57,7 @@ async function loadAdminData(){
   const paid=!!x.paid;
   const pending=!!x.payment_pending;
   const result={id:x.request_code||x.id,databaseId:x.id,adoptDatabaseId:x.adopt_id,adoptId:a.adopt_code||'',fullName:c.full_name||'',email:c.email||'',discord:c.discord_username||'',license:x.license_type||'Personal Use',basePrice:Number(x.base_price||0),licenseFee:Number(x.license_fee||0),total:Number(x.total||0),status:x.status||'Pending Review',paymentStatus:x.payment_status||'Not Sent',invoiceSent:!!x.invoice_sent,paymentPending:pending,paid,paidDate:x.paid_at||'',delivered:!!x.delivered,termsAccepted:!!x.terms_accepted,date:x.created_at||'',paymentHistory:history,paymentMethod:history.filter(p=>p.method).map(p=>p.method).join(', ')||x.metadata?.payment_method||'',reservationReleased:x.status==='Cancelled'&&a.status==='Available',metadata:x.metadata||{},};
-  const certificate=data.certificates.find(z=>z.purchase_request_id===x.id)||{};
+  const certificate=data.certificates.filter(z=>z.purchase_request_id===x.id).sort((a,b)=>String(b.created_at||'').localeCompare(String(a.created_at||'')))[0]||{};
   result.certificate=certificate.certificate_code||'';
   result.certificateId=certificate.id||null;
   result.certificateStatus=certificate.status||'';
@@ -81,12 +81,16 @@ async function loadAdminData(){
  const ownershipGroups=new Map();
  data.ownership_records.forEach(x=>{const a=adoptsByUuid.get(x.adopt_id),c=customers.get(x.customer_id),key=a?.adopt_code||('CUSTOM-'+(data.custom_orders.find(z=>z.id===x.custom_order_id)?.order_code||x.custom_order_id));const arr=ownershipGroups.get(key)||[];arr.push({row:x,customer:c,adopt:a});ownershipGroups.set(key,arr)});
  ownership=Array.from(ownershipGroups.entries()).map(([key,rows])=>{
-  rows.sort((a,b)=>String(a.row.acquired_at).localeCompare(String(b.row.acquired_at)));
-  const last=rows[rows.length-1],current={name:last.customer?.full_name||'',email:last.customer?.email||'',discord:last.customer?.discord_username||'',license:last.row.license_type||'',date:last.row.acquired_at||'',price:Number(last.row.acquisition_price||0),certificate:''};
-  const cert=last.row.purchase_request_id?data.certificates.find(z=>z.purchase_request_id===last.row.purchase_request_id):data.certificates.find(z=>z.custom_order_id===last.row.custom_order_id);
-  current.certificate=cert?.certificate_code||'';
+  rows.sort((a,b)=>String(a.row.acquired_at).localeCompare(String(b.row.acquired_at))||String(a.row.id).localeCompare(String(b.row.id)));
+  const certsForRecord=rows[rows.length-1].row.purchase_request_id
+   ?data.certificates.filter(z=>z.purchase_request_id===rows[rows.length-1].row.purchase_request_id).sort((a,b)=>String(a.created_at||'').localeCompare(String(b.created_at||'')))
+   :data.certificates.filter(z=>z.custom_order_id===rows[rows.length-1].row.custom_order_id).sort((a,b)=>String(a.created_at||'').localeCompare(String(b.created_at||'')));
+  const certificateForRow=row=>certsForRecord.find(z=>z.certificate_data?.ownership_id===row.id)
+   ||(!row.metadata?.transfer_from_ownership_id?certsForRecord.find(z=>!z.certificate_data?.transfer):null);
+  const last=rows[rows.length-1],lastCert=certificateForRow(last.row);
+  const current={name:last.customer?.full_name||'',email:last.customer?.email||'',discord:last.customer?.discord_username||'',license:last.row.license_type||'',date:last.row.acquired_at||'',price:Number(last.row.acquisition_price||0),certificate:lastCert?.certificate_code||'',rowId:last.row.id};
   const adopt=last.adopt,custom=data.custom_orders.find(z=>z.id===last.row.custom_order_id);
-  return {adoptId:key,name:adopt?.name||custom?.character_name||key,originalAcquisitionDate:rows[0].row.acquired_at||'',current,history:rows.map((v)=>({name:v.customer?.full_name||'',license:v.row.license_type||'',date:v.row.acquired_at||'',price:Number(v.row.acquisition_price||0),certificate:'',kind:v.row.custom_order_id?'Custom design':'Ownership record',metadata:v.row.metadata||{}}))};
+  return {adoptId:key,name:adopt?.name||custom?.character_name||key,originalAcquisitionDate:rows[0].row.acquired_at||'',current,history:rows.map(v=>{const cert=certificateForRow(v.row);return {name:v.customer?.full_name||'',license:v.row.license_type||'',date:v.row.acquired_at||'',price:Number(v.row.acquisition_price||0),certificate:cert?.certificate_code||'',certificateData:cert?.certificate_data||{},certificateStatus:cert?.status||'',kind:v.row.metadata?.transfer_from_ownership_id?'Ownership transfer':v.row.custom_order_id?'Custom design':'Original ownership',metadata:v.row.metadata||{},ownershipId:v.row.id}})};
  });
  data.ownership_records.forEach(x=>{const a=adoptsByUuid.get(x.adopt_id);if(a){const owner=ownership.find(o=>o.adoptId===a.adopt_code);if(owner){a.owner=owner.current;a.ownershipHistory=owner.history}}});
  activities=data.activity_log.map(x=>({id:x.id,text:x.description||x.action||'Activity',time:x.created_at||'',kind:x.entity_type||'activity',action:x.action,metadata:x.metadata||{}}));
@@ -553,7 +557,26 @@ function renderCustomOwnership(){const q=($('#custom-ownership-search')?.value||
 function renderCustomCertificates(){const el=$('#custom-certificate-select');if(!el)return;const items=[...customRequests.filter(r=>(r.finalPaid||r.fullPaid)&&customStatusLabel(r)==='Completed'&&r.certificate).map(r=>({v:`custom:${r.id}`,l:`${r.id} · ${r.characterName||'Name not supplied · incomplete'}`}))];const current=el.value;workspaceSummary('custom-certificate-summary',`${customRequests.filter(r=>r.finalPaid||r.fullPaid).length} fully paid custom orders.`);el.innerHTML='<option value="">Choose a Custom Adopt certificate</option>'+items.map(x=>`<option value="${esc(x.v)}">${esc(x.l)}</option>`).join('');if(items.some(x=>x.v===current))el.value=current;$('#custom-certificate-preview').disabled=!el.value;$('#custom-certificate-download').disabled=!el.value;$('#custom-certificate-local-download').disabled=!el.value}
 
 function renderOwnership(){const q=($('#ownership-search')?.value||'').toLowerCase(),records=ownership.filter(o=>!String(o.adoptId).startsWith('CUSTOM-')).filter(o=>!q||`${o.adoptId} ${o.name} ${o.current?.name} ${o.current?.email} ${o.current?.discord}`.toLowerCase().includes(q));workspaceSummary('ownership-summary',`${records.length} private premade ownership records.`);const tbody=$('#ownership-rows');tbody.innerHTML=records.map(o=>{const a=adopts.find(x=>x.id===o.adoptId);return `<tr><td>${a?artMarkup(a,null,true):'<span class="fine">—</span>'}<br>${esc(o.name)}<br><span class="fine">${esc(o.adoptId)}</span></td><td>${esc(o.current?.name||'—')}<br><span class="fine">${esc(o.current?.email||'')}<br>${esc(o.current?.discord||'')}</span></td><td>${esc(o.current?.license||'—')}<br>${esc(o.originalAcquisitionDate||'—')}</td><td>${money(o.current?.price||0)}<br>${esc(o.current?.certificate||'—')}</td><td>${(o.history||[]).map(h=>`${esc(h.kind||'Transfer')} · ${esc(h.name)} · ${esc(h.license)} · ${esc(h.date)} · ${money(h.price)} · ${esc(h.certificate)}`).join('<br>')}</td><td><button data-owner="transfer" data-id="${esc(o.adoptId)}" ${o.current?.license!=='Full Rights Transfer'?'disabled':''}>Record Transfer</button><button data-owner="certificate" data-id="${esc(o.adoptId)}">Preview Certificate</button></td></tr>`}).join('');$('#ownership-empty').classList.toggle('hidden',records.length>0)}
-function transferOwner(id){toast('Ownership transfers are not connected to persistent records yet. No changes were made.',true)}
+function transferOwner(id){
+ const o=ownership.find(x=>x.adoptId===id);
+ if(!o||String(id).startsWith('CUSTOM-')){toast('A premade ownership record is required for this transfer.',true);return}
+ if(o.current?.license!=='Full Rights Transfer'||!o.current?.rowId){toast('Only a verified Full Rights Transfer ownership record can be transferred.',true);return}
+ const body=\`<div class="record-detail-grid"><section><h3>Current registered owner</h3><p><b>\${esc(o.current.name||'Not recorded')}</b></p><p>\${esc(o.current.email||'')}</p><p>\${esc(o.current.discord||'')}</p><p>License: Full Rights Transfer</p></section><section><h3>Adoptable</h3><p><b>\${esc(o.name)}</b> · \${esc(o.adoptId)}</p><p>Original acquisition: \${esc(o.originalAcquisitionDate||'Not recorded')}</p></section></div><div class="form-grid"><label class="field">New owner full name<input id="transfer-name" maxlength="180" required></label><label class="field">New owner email<input id="transfer-email" type="email" maxlength="320" required></label><label class="field">New owner Discord (optional)<input id="transfer-discord" maxlength="100"></label><label class="field full">Transfer notes / evidence reference<textarea id="transfer-notes" rows="3" maxlength="2000" required placeholder="Record the agreement or evidence reference. Do not enter sensitive payment credentials."></textarea></label></div><div class="transfer-confirmations"><label class="checkline"><input id="transfer-previous-consent" type="checkbox"> I confirm the current owner has expressly consented to this transfer.</label><label class="checkline"><input id="transfer-new-consent" type="checkbox"> I confirm the new owner has expressly accepted the transfer and its existing license terms.</label><label class="checkline"><input id="transfer-admin-authorized" type="checkbox"> I authorize this ownership change as the shop administrator.</label></div><p class="fine">The original ownership record remains in the history. The previous certificate will be marked Superseded and a new certificate will be created as Pending Review. This does not process a payment or send files. The Full Rights Transfer license is preserved; the official Terms of Service remain controlling.</p>\`;
+ const modal=openModal('Record ownership transfer · '+o.name,adminAccordion('Transfer details','↔','Review the current owner and enter the new registered owner.',body,true),[
+  {label:'Confirm ownership transfer',primary:true,group:'Ownership transfer',hint:'Creates a permanent transfer record and a new certificate awaiting artist review.',action:async m=>{
+   const fullName=m.querySelector('#transfer-name').value.trim(),email=m.querySelector('#transfer-email').value.trim(),discord=m.querySelector('#transfer-discord').value.trim(),notes=m.querySelector('#transfer-notes').value.trim();
+   if(!fullName||!email||!notes){toast('Complete the new owner name, valid email and transfer notes.',true);return}
+   if(!m.querySelector('#transfer-previous-consent').checked||!m.querySelector('#transfer-new-consent').checked||!m.querySelector('#transfer-admin-authorized').checked){toast('All three transfer confirmations are required.',true);return}
+   if(!m.querySelector('#transfer-email').validity.valid){toast('Enter a valid email address.',true);return}
+   if(!confirm('Confirm the permanent ownership transfer of '+o.name+' to '+fullName+'? The previous certificate will be superseded.'))return;
+   try{
+    await window.LKFBackend.admin('transfer-ownership',{payload:{adopt_code:id,full_name:fullName,email,discord_username:discord,notes,previous_owner_consent:true,new_owner_consent:true,admin_authorized:true}});
+    await loadAdminData();m.remove();renderAll();toast('Ownership transferred. The new certificate is awaiting your review.',true);
+   }catch(error){toast(error?.message||'Ownership transfer could not be saved.',true)}
+  }},
+  {label:'Cancel'}
+ ]);
+}
 function editCertificateInformation(key){
  toast('Certificate information is generated from the saved purchase or Custom Adopt record. Editing is not connected yet; no changes were made.',true);
 }
