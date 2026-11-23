@@ -155,10 +155,17 @@ return null;
 }
 
 function getClientIp(req: Request): string {
-const forwarded = req.headers.get("x-forwarded-for");
-if (forwarded) return forwarded.split(",")[0].trim();
+const cloudflareIp = req.headers.get("cf-connecting-ip");
+if (cloudflareIp) return cloudflareIp.trim().slice(0, 128);
 
-return req.headers.get("cf-connecting-ip") || "unknown";
+// When the trusted edge header is unavailable, use the last proxy-added
+// address rather than the first client-controlled X-Forwarded-For entry.
+const forwarded = req.headers.get("x-forwarded-for");
+if (forwarded) {
+const chain = forwarded.split(",").map((part) => part.trim()).filter(Boolean);
+if (chain.length) return chain[chain.length - 1].slice(0, 128);
+}
+return "unknown";
 }
 
 async function getIpHash(req: Request): Promise<string> {
