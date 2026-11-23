@@ -507,6 +507,90 @@ metadata: { changed_fields: Object.keys(values) },
 return respond({ ok: true, data });
 }
 
+async function confirmCustomPayment(body: Record<string, unknown>) {
+if (!validUuid(body.custom_order_id)) {
+return respond({ ok: false, error: "Invalid Custom Adopt order ID." }, 400);
+}
+const requestedStage = String(body.stage ?? "").toLowerCase();
+const stageMap: Record<string, { label: string; rpc: string; fraction: number }> = {
+full: { label: "Full payment · 100%", rpc: "admin_confirm_custom_full_payment", fraction: 1 },
+initial: { label: "Initial payment · 60%", rpc: "admin_confirm_payment", fraction: 0.6 },
+final: { label: "Final payment · 40%", rpc: "admin_confirm_payment", fraction: 0.4 },
+};
+const selected = stageMap[requestedStage];
+if (!selected) return respond({ ok: false, error: "Unknown payment stage." }, 400);
+
+const { data: order, error: orderError } = await supabase
+.from("custom_orders")
+.select("id, quote_base, license_fee, agreed_total, payment_plan, quote_sent, client_approved_quote, initial_paid, final_approved, final_paid, status")
+.eq("id", body.custom_order_id)
+.maybeSingle();
+if (orderError) return respond({ ok: false, error: orderError.message }, 400);
+if (!order) return respond({ ok: false, error: "Custom Adopt order not found." }, 404);
+
+const total = Number(order.agreed_total ?? (Number(order.quote_base || 0) + Number(order.license_fee || 0)));
+if (!Number.isFinite(total) || total <= 0 || !order.quote_sent || !order.client_approved_quote) {
+return respond({ ok: false, error: "A valid quotation must be sent and approved before payment confirmation." }, 409);
+}
+if (requestedStage === "full") {
+if (order.payment_plan !== "full" || order.initial_paid || order.final_paid) {
+return respond({ ok: false, error: "This order is not eligible for a full payment confirmation." }, 409);
+}
+} else if (order.payment_plan === "full") {
+return respond({ ok: false, error: "This order uses the Full Payment plan." }, 409);
+} else if (requestedStage === "initial" && order.initial_paid) {
+return respond({ ok: true, already_confirmed: true });
+} else if (requestedStage === "final" && (!order.initial_paid || !order.final_approved || order.final_paid)) {
+return respond({ ok: false, error: "The final payment requires confirmed initial payment and final design approval." }, 409);
+}
+
+const amount = Number((total * selected.fraction).toFixed(2));
+const { data: existing, error: existingError } = await supabase
+.from("payments")
+.select("id, status")
+.eq("custom_order_id", order.id)
+.eq("stage", selected.label)
+.order("created_at", { ascending: false })
+.limit(1)
+.maybeSingle();
+if (existingError) return respond({ ok: false, error: existingError.message }, 400);
+if (existing?.status === "Confirmed") {
+return respond({ ok: true, already_confirmed: true, payment_id: existing.id });
+}
+let paymentId = existing?.id;
+if (!paymentId) {
+const { data: payment, error: paymentError } = await supabase
+.from("payments")
+.insert({
+custom_order_id: order.id,
+stage: selected.label,
+amount,
+currency: "USD",
+status: "Pending",
+payment_method: typeof body.payment_method === "string"
+? body.payment_method.trim().slice(0, 100)
+: "Manual verification",
+})
+.select("id")
+.single();
+if (paymentError) return respond({ ok: false, error: paymentError.message }, 400);
+paymentId = payment.id;
+}
+const { data: confirmation, error: confirmationError } = await supabase.rpc(
+selected.rpc,
+{ p_payment_id: paymentId },
+);
+if (confirmationError) return respond({ ok: false, error: confirmationError.message }, 400);
+
+const nextStatus = requestedStage === "final" ? "Awaiting Delivery" : "In Progress";
+await supabase.from("custom_orders").update({
+status: nextStatus,
+updated_at: new Date().toISOString(),
+}).eq("id", order.id);
+
+return respond({ ok: true, payment_id: paymentId, amount, stage: selected.label, data: confirmation });
+}
+
 async function addCustomUpdate(body: Record<string, unknown>) {
 if (!validUuid(body.custom_order_id) || !["Note", "Feedback", "Suggestion"].includes(String(body.update_type))) {
 return respond({ ok: false, error: "Invalid custom order update." }, 400);
@@ -718,6 +802,9 @@ return await confirmPurchasePayment(body);
 
 case "update-purchase-request":
 return await updatePurchaseRequest(body);
+
+case "confirm-custom-payment":
+return await confirmCustomPayment(body);
 
 case "add-custom-update":
 return await addCustomUpdate(body);
