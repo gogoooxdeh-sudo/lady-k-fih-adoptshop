@@ -127,6 +127,28 @@
       return await invoke('public-api', { action, payload });
     },
 
+    async uploadAdoptImage(adoptId, file) {
+      const prepared = await backend.admin('create-adopt-image-upload', {
+        adopt_id: adoptId,
+        filename: file.name,
+        content_type: file.type,
+        file_size: file.size,
+      });
+      const { error } = await client.storage.from('adoptables').uploadToSignedUrl(
+        prepared.path,
+        prepared.token,
+        file,
+        { contentType: file.type, upsert: false },
+      );
+      if (error) throw new Error(error.message || 'Image upload failed.');
+      return {
+        storage_path: prepared.path,
+        original_filename: file.name,
+        mime_type: file.type,
+        file_size: file.size,
+      };
+    },
+
     async publicCustomRequest(payload, files = []) {
       const form = new FormData();
       form.append('action', 'custom');
