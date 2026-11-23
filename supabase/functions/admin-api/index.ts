@@ -507,6 +507,38 @@ metadata: { changed_fields: Object.keys(values) },
 return respond({ ok: true, data });
 }
 
+async function addCustomUpdate(body: Record<string, unknown>) {
+if (!validUuid(body.custom_order_id) || !["Note", "Feedback", "Suggestion"].includes(String(body.update_type))) {
+return respond({ ok: false, error: "Invalid custom order update." }, 400);
+}
+const content = typeof body.content === "string" ? body.content.trim().slice(0, 5000) : "";
+if (!content) return respond({ ok: false, error: "Update content is required." }, 400);
+const values: Record<string, unknown> = {
+custom_order_id: body.custom_order_id,
+update_type: body.update_type,
+content,
+};
+if (body.update_type === "Suggestion") {
+values.review_status = typeof body.review_status === "string"
+? body.review_status.slice(0, 40)
+: "Pending Review";
+}
+const { data, error } = await supabase
+.from("custom_order_updates")
+.insert(values)
+.select()
+.single();
+if (error) return respond({ ok: false, error: error.message }, 400);
+await supabase.from("activity_log").insert({
+entity_type: "custom_order",
+entity_id: body.custom_order_id,
+action: "custom_order_update_added",
+description: "Custom order update recorded from admin panel",
+metadata: { update_type: body.update_type },
+});
+return respond({ ok: true, data });
+}
+
 async function updateCustomOrder(body: Record<string, unknown>) {
 if (!validUuid(body.id) || !isObject(body.values)) {
 return respond({ ok: false, error: "Invalid custom order update." }, 400);
@@ -686,6 +718,9 @@ return await confirmPurchasePayment(body);
 
 case "update-purchase-request":
 return await updatePurchaseRequest(body);
+
+case "add-custom-update":
+return await addCustomUpdate(body);
 
 case "update-custom-order":
 return await updateCustomOrder(body);
