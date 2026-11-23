@@ -223,7 +223,16 @@ function initCustomForm(){const form=$('#custom-form');customLicense='Personal U
 }
 async function openAdmin(){
  if(!window.LKFBackend?.ready||!(await window.LKFBackend.verify())){toast('Administrator session expired. Please sign in again.',true);return}
- const shell=$('#admin-shell');shell.classList.remove('hidden');document.body.style.overflow='hidden';try{await loadAdminData()}catch(error){console.error('[Lady K ★ Fih] Admin data load failed',error);toast('Could not load administrator records: '+(error?.message||'Unknown error'),true)}adminGo('dashboard');renderAdmin();
+ const shell=$('#admin-shell');
+ try{
+  await loadAdminData();
+ }catch(error){
+  console.error('[Lady K ★ Fih] Admin data load failed',error);
+  try{await window.LKFBackend.logout()}catch(logoutError){console.error('[Lady K ★ Fih] Session cleanup failed',logoutError)}
+  toast('Administrator records could not be loaded. The panel remains closed to prevent showing sample data as real records: '+(error?.message||'Unknown error'),true);
+  return;
+ }
+ shell.classList.remove('hidden');document.body.style.overflow='hidden';adminGo('dashboard');renderAdmin();
 }
 async function closeAdmin(){
  $('#admin-shell').classList.add('hidden');$('#admin-sidebar').classList.remove('open');$('#admin-overlay').classList.add('hidden');document.body.style.overflow='';
