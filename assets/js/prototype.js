@@ -45,7 +45,7 @@ async function loadAdminData(){
  const notificationPreferences={...notificationDefaults,...(savedNotifications&&typeof savedNotifications==='object'?savedNotifications:{})};
  Object.entries(notificationPreferences).forEach(([key,value])=>{const el=$('#notify-'+key.replaceAll('_','-'));if(el)el.checked=value!==false});
  const notificationStatus=$('#admin-notification-status');if(notificationStatus)notificationStatus.textContent=Object.values(notificationPreferences).every(Boolean)?'All notification types are enabled.':'Some notification types are disabled.';
- storeVisibility=['Public','Temporarily Closed','Hidden from Public'].includes(String(savedVisibility))?String(savedVisibility):'Public';
+ storeVisibility=['Public','Temporarily Closed','Hidden from Public'].includes(String(savedVisibility))?String(savedVisibility):'Temporarily Closed';
  const visibilitySelect=$('#admin-store-visibility');if(visibilitySelect)visibilitySelect.value=storeVisibility;
  const visibilityStatus=$('#admin-store-visibility-status');if(visibilityStatus)visibilityStatus.textContent='Current status: '+storeVisibility+'. This setting controls public visibility and whether new requests are accepted.';
  const customers=new Map(data.customers.map(x=>[x.id,x]));
@@ -115,7 +115,7 @@ async function loadPublicCatalog(){
  if(grid)grid.innerHTML='<p class="center-note">Loading adoptables…</p>';
  try{
   const result=await window.LKFBackend.publicRequest('catalog');
-  storeVisibility=['Public','Temporarily Closed','Hidden from Public'].includes(String(result.storeVisibility))?String(result.storeVisibility):'Public';
+  storeVisibility=['Public','Temporarily Closed','Hidden from Public'].includes(String(result.storeVisibility))?String(result.storeVisibility):'Temporarily Closed';
   adopts=(result.adopts||[]).map(row=>({id:row.id,name:row.name||'Untitled Adopt',category:row.category||'Other',price:Number(row.price||0),status:row.status||'Available',publicVisible:row.publicVisible!==false,archiveVisible:row.archiveVisible!==false,symbol:row.symbol||'✧',description:row.description||'',files:Array.isArray(row.files)?row.files:[],tags:Array.isArray(row.tags)?row.tags:[],featured:!!row.featured,images:Array.isArray(row.images)?row.images:[],mainImage:Math.max(0,Number(row.mainImage||0)),databaseId:row.databaseId||null}));
   refreshCategories();renderPublic();
  }catch(error){console.error('[Lady K ★ Fih] Catalog load failed',error);if(featured)featured.innerHTML='<p class="center-note">The catalog could not be loaded. Please refresh in a moment.</p>';if(grid)grid.innerHTML='<p class="center-note">The catalog could not be loaded. Please refresh in a moment.</p>'}
