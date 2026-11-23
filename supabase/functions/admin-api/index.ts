@@ -400,6 +400,70 @@ metadata: { changed_fields: Object.keys(values) },
 return respond({ ok: true, data });
 }
 
+async function confirmPurchasePayment(body: Record<string, unknown>) {
+if (!validUuid(body.request_id)) {
+return respond({ ok: false, error: "Invalid purchase request ID." }, 400);
+}
+const { data: request, error: requestError } = await supabase
+.from("purchase_requests")
+.select("id, adopt_id, total, paid, status")
+.eq("id", body.request_id)
+.maybeSingle();
+if (requestError) return respond({ ok: false, error: requestError.message }, 400);
+if (!request) return respond({ ok: false, error: "Purchase request not found." }, 404);
+if (request.paid) return respond({ ok: true, already_confirmed: true });
+if (["Cancelled", "Rejected", "Completed", "Delivered"].includes(request.status)) {
+return respond({ ok: false, error: "This purchase request is closed." }, 409);
+}
+const { data: adopt, error: adoptError } = await supabase
+.from("adopts")
+.select("id, status")
+.eq("id", request.adopt_id)
+.maybeSingle();
+if (adoptError) return respond({ ok: false, error: adoptError.message }, 400);
+if (!adopt || adopt.status !== "Reserved") {
+return respond({ ok: false, error: "The adoptable must remain Reserved before payment confirmation." }, 409);
+}
+const stage = "Full payment";
+const { data: existing, error: existingError } = await supabase
+.from("payments")
+.select("id, status")
+.eq("purchase_request_id", request.id)
+.eq("stage", stage)
+.order("created_at", { ascending: false })
+.limit(1)
+.maybeSingle();
+if (existingError) return respond({ ok: false, error: existingError.message }, 400);
+if (existing?.status === "Confirmed") {
+return respond({ ok: true, already_confirmed: true, payment_id: existing.id });
+}
+let paymentId = existing?.id;
+if (!paymentId) {
+const { data: payment, error: paymentError } = await supabase
+.from("payments")
+.insert({
+purchase_request_id: request.id,
+stage,
+amount: request.total,
+currency: "USD",
+status: "Pending",
+payment_method: typeof body.payment_method === "string"
+? body.payment_method.trim().slice(0, 100)
+: "Manual verification",
+})
+.select("id")
+.single();
+if (paymentError) return respond({ ok: false, error: paymentError.message }, 400);
+paymentId = payment.id;
+}
+const { data: confirmation, error: confirmationError } = await supabase.rpc(
+"admin_confirm_payment",
+{ p_payment_id: paymentId },
+);
+if (confirmationError) return respond({ ok: false, error: confirmationError.message }, 400);
+return respond({ ok: true, payment_id: paymentId, data: confirmation });
+}
+
 async function updatePurchaseRequest(body: Record<string, unknown>) {
 if (!validUuid(body.id) || !isObject(body.values)) {
 return respond({ ok: false, error: "Invalid purchase request update." }, 400);
@@ -607,6 +671,9 @@ return await listTable(body.resource, body);
 
 case "update-adopt":
 return await updateAdopt(body);
+
+case "confirm-purchase-payment":
+return await confirmPurchasePayment(body);
 
 case "update-purchase-request":
 return await updatePurchaseRequest(body);
