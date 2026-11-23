@@ -564,6 +564,46 @@ metadata: { changed_fields: Object.keys(values) },
 return respond({ ok: true, data });
 }
 
+
+async function transferOwnership(body: Record<string, unknown>) {
+  if (!isObject(body.payload)) return respond({ ok: false, error: "Transfer details are required." }, 400);
+  const input = body.payload;
+  const adoptCode = typeof input.adopt_code === "string" ? input.adopt_code.trim() : "";
+  const fullName = typeof input.full_name === "string" ? input.full_name.trim() : "";
+  const email = typeof input.email === "string" ? input.email.trim().toLowerCase() : "";
+  const discord = typeof input.discord_username === "string" ? input.discord_username.trim() : "";
+  const notes = typeof input.notes === "string" ? input.notes.trim() : "";
+  if (!adoptCode || !fullName || !email || !notes ||
+      input.previous_owner_consent !== true || input.new_owner_consent !== true ||
+      input.admin_authorized !== true) {
+    return respond({ ok: false, error: "Complete the new owner's details, transfer notes and all three confirmations." }, 400);
+  }
+  if (!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email)) {
+    return respond({ ok: false, error: "Enter a valid new owner email address." }, 400);
+  }
+  const payload = {
+    adopt_code: adoptCode.slice(0, 100),
+    full_name: fullName.slice(0, 180),
+    email: email.slice(0, 320),
+    discord_username: discord.slice(0, 100),
+    notes: notes.slice(0, 2000),
+    previous_owner_consent: true,
+    new_owner_consent: true,
+    admin_authorized: true,
+  };
+  const { data, error } = await supabase.rpc("admin_transfer_ownership", { p_payload: payload });
+  if (error) return respond({ ok: false, error: error.message }, 400);
+  const result = Array.isArray(data) ? data[0] : data;
+  if (!result?.ok) return respond({ ok: false, error: "The ownership transfer could not be recorded." }, 400);
+  await notifyTelegram(
+    "↔️ <b>Ownership transfer recorded</b>\\nAdopt: <code>" +
+    escapeTelegramHtml(result.adopt_code || adoptCode) + "</code>\\nNew owner: " +
+    escapeTelegramHtml(fullName) + "\\nNew certificate: <code>" +
+    escapeTelegramHtml(result.certificate_code || "") + "</code>\\nStatus: Pending artist review",
+  );
+  return respond({ ok: true, data: result });
+}
+
 async function createManualSale(body: Record<string, unknown>) {
 if (!isObject(body.payload)) return respond({ ok: false, error: "Manual sale details are required." }, 400);
 const input = body.payload;
@@ -1129,6 +1169,9 @@ return await updateAdopt(body);
 
 case "create-manual-sale":
 return await createManualSale(body);
+
+case "transfer-ownership":
+return await transferOwnership(body);
 
 case "confirm-purchase-payment":
 return await confirmPurchasePayment(body);
