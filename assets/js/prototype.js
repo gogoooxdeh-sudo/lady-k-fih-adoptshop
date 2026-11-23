@@ -234,15 +234,17 @@ async function updateCustomPlan(id,modal){
  const r=customRequests.find(x=>x.id===id);if(!r)return;
  const price=Number(modal.querySelector('#custom-agreed-total').value),plan=modal.querySelector('#custom-payment-plan').value,paid=r.fullPaid||r.initialPaid||r.finalPaid;
  if(!(price>=Number(r.licenseFee||0)+0.01)){toast('Enter an agreed price greater than the license fee ('+money(r.licenseFee||0)+').',true);return}
- const oldTotal=Number(r.agreedTotal??(Number(r.quoteBase||0)+Number(r.licenseFee||0)));
+ const oldTotal=Number(r.agreedTotal??(Number(r.quoteBase||0)+Number(r.licenseFee||0))),changed=plan!==r.paymentPlan||price!==oldTotal;
  let metadata={...(r.metadata||{})};
- if(paid&&(plan!==r.paymentPlan||price!==oldTotal)&&!modal.querySelector('#custom-admin-adjustment')?.checked){toast('Confirm Administrative Adjustment before changing a paid order. Existing payment history will be retained.',true);return}
- if(paid&&(plan!==r.paymentPlan||price!==oldTotal)){
+ if(paid&&changed&&!modal.querySelector('#custom-admin-adjustment')?.checked){toast('Confirm Administrative Adjustment before changing a paid order. Existing payment history will be retained.',true);return}
+ if(paid&&changed){
   if(!confirm('Confirm this administrative adjustment? Historical payment confirmations will not be changed.'))return;
   metadata.adjustment_history=[...(metadata.adjustment_history||[]),{date:new Date().toISOString(),oldTotal,newTotal:price,oldPlan:r.paymentPlan,newPlan:plan}];
  }
  metadata.payment_method=modal.querySelector('#custom-payment-method').value.trim();
- const saved=await persistCustomUpdate(r,{quote_base:price-Number(r.licenseFee||0),agreed_total:price,payment_plan:plan,client_approved_quote:!!modal.querySelector('#custom-client-agreed')?.checked,metadata});
+ const values={quote_base:price-Number(r.licenseFee||0),agreed_total:price,payment_plan:plan,client_approved_quote:!!modal.querySelector('#custom-client-agreed')?.checked,metadata};
+ if(changed&&!paid){values.quote_sent=false;values.client_approved_quote=false;values.status='Quote Pending'}
+ const saved=await persistCustomUpdate(r,values);
  if(saved){modal.remove();renderAll();openCustomDetail(saved)}
 }
 function adminAccordion(title,icon='✧',description='',body='',open=false){return `<section class="admin-record-section"><h3><span class="accordion-icon">${icon}</span><span>${title}</span></h3>${description?`<p class="record-section-help">${description}</p>`:''}<div class="record-section-content">${body}</div></section>`}
