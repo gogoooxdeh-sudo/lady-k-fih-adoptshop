@@ -272,9 +272,23 @@ if (error) {
 return respond({ ok: false, error: error.message }, 400);
 }
 
+let outputData = data ?? [];
+
+if (table === "adopt_images" || table === "custom_reference_files") {
+const bucket = table === "adopt_images" ? "adoptables" : "custom-references";
+outputData = await Promise.all(outputData.map(async (row: Record<string, unknown>) => {
+const storagePath = typeof row.storage_path === "string" ? row.storage_path : "";
+if (!storagePath) return { ...row, signed_url: null };
+const { data: signed, error: signedError } = await supabase.storage
+.from(bucket)
+.createSignedUrl(storagePath, 1800);
+return { ...row, signed_url: signedError ? null : signed?.signedUrl ?? null };
+}));
+}
+
 return respond({
 ok: true,
-data: data ?? [],
+data: outputData,
 page,
 limit,
 total: count ?? 0,
@@ -383,6 +397,40 @@ description: "Adoptable updated from admin panel",
 metadata: { changed_fields: Object.keys(values) },
 });
 
+return respond({ ok: true, data });
+}
+
+async function updatePurchaseRequest(body: Record<string, unknown>) {
+if (!validUuid(body.id) || !isObject(body.values)) {
+return respond({ ok: false, error: "Invalid purchase request update." }, 400);
+}
+const values = pickAllowed(body.values, [
+"status",
+"payment_status",
+"invoice_sent",
+"payment_pending",
+"delivered",
+"metadata",
+]);
+if (Object.keys(values).length === 0) {
+return respond({ ok: false, error: "No permitted fields supplied." }, 400);
+}
+values.updated_at = new Date().toISOString();
+const { data, error } = await supabase
+.from("purchase_requests")
+.update(values)
+.eq("id", body.id)
+.select()
+.maybeSingle();
+if (error) return respond({ ok: false, error: error.message }, 400);
+if (!data) return respond({ ok: false, error: "Purchase request not found." }, 404);
+await supabase.from("activity_log").insert({
+entity_type: "purchase_request",
+entity_id: body.id,
+action: "purchase_request_updated",
+description: "Purchase request updated from admin panel",
+metadata: { changed_fields: Object.keys(values) },
+});
 return respond({ ok: true, data });
 }
 
@@ -559,6 +607,9 @@ return await listTable(body.resource, body);
 
 case "update-adopt":
 return await updateAdopt(body);
+
+case "update-purchase-request":
+return await updatePurchaseRequest(body);
 
 case "update-custom-order":
 return await updateCustomOrder(body);
