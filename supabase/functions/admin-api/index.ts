@@ -678,6 +678,33 @@ metadata: { update_type: body.update_type },
 return respond({ ok: true, data });
 }
 
+async function reviewCustomSuggestion(body: Record<string, unknown>) {
+if (!validUuid(body.id)) {
+return respond({ ok: false, error: "Invalid revision suggestion ID." }, 400);
+}
+const allowedStatuses = ["Pending Review", "Accepted", "Declined", "Completed"];
+if (!allowedStatuses.includes(String(body.review_status))) {
+return respond({ ok: false, error: "Invalid revision suggestion status." }, 400);
+}
+const { data, error } = await supabase
+.from("custom_order_updates")
+.update({ review_status: body.review_status })
+.eq("id", body.id)
+.eq("update_type", "Suggestion")
+.select()
+.maybeSingle();
+if (error) return respond({ ok: false, error: error.message }, 400);
+if (!data) return respond({ ok: false, error: "Revision suggestion not found." }, 404);
+await supabase.from("activity_log").insert({
+entity_type: "custom_order",
+entity_id: data.custom_order_id,
+action: "custom_suggestion_reviewed",
+description: "Custom revision suggestion status updated",
+metadata: { suggestion_id: data.id, review_status: data.review_status },
+});
+return respond({ ok: true, data });
+}
+
 async function updateCustomOrder(body: Record<string, unknown>) {
 if (!validUuid(body.id) || !isObject(body.values)) {
 return respond({ ok: false, error: "Invalid custom order update." }, 400);
@@ -866,6 +893,9 @@ return await confirmCustomPayment(body);
 
 case "add-custom-update":
 return await addCustomUpdate(body);
+ 
+case "review-custom-suggestion":
+return await reviewCustomSuggestion(body);
 
 case "update-custom-order":
 return await updateCustomOrder(body);
