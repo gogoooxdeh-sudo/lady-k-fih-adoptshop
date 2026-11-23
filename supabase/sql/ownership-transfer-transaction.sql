@@ -30,7 +30,7 @@ BEGIN
   IF v_adopt_code IS NULL OR v_full_name IS NULL OR v_email IS NULL OR v_notes IS NULL THEN
     RAISE EXCEPTION 'Adopt code, new owner name, email and transfer notes are required.';
   END IF;
-  IF v_email !~* '^[A-Z0-9.!#$%&''*+/=?^_\x60{|}~-]+@[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?(?:\.[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?)+$' THEN
+  IF v_email !~* '^[A-Z0-9.!#$%&''*+/=?^_`{|}~-]+@[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?(?:\.[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?)+$' THEN
     RAISE EXCEPTION 'Enter a valid new owner email address.';
   END IF;
   IF NOT (v_previous_consent AND v_new_consent AND v_admin_authorized) THEN
