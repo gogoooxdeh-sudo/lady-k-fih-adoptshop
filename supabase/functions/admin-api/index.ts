@@ -867,7 +867,7 @@ metadata: {},
 
 await notifyTelegram(
   (body.decision === "approve" ? "📜 <b>Certificate approved</b>" : "⚠️ <b>Certificate rejected</b>") +
-  "\\nCertificate: <code>" + escapeTelegramHtml(data.certificate_code || data.id) + "</code>",
+  "\nCertificate: <code>" + escapeTelegramHtml(data.certificate_code || data.id) + "</code>",
 );
 return respond({ ok: true, data });
 }
@@ -893,23 +893,23 @@ if (rpcName === "admin_complete_purchase_delivery") {
   const { data: request } = await supabase.from("purchase_requests")
     .select("request_code, total").eq("id", id).maybeSingle();
   await notifyTelegram(
-    "📦 <b>Adopt delivery completed</b>\\nRequest: <code>" +
+    "📦 <b>Adopt delivery completed</b>\nRequest: <code>" +
     escapeTelegramHtml(request?.request_code || id) + "</code>" +
-    (request?.total != null ? "\\nTotal: $" + escapeTelegramHtml(Number(request.total).toFixed(2)) + " USD" : ""),
+    (request?.total != null ? "\nTotal: $" + escapeTelegramHtml(Number(request.total).toFixed(2)) + " USD" : ""),
   );
 } else if (rpcName === "admin_complete_custom_delivery") {
   const { data: order } = await supabase.from("custom_orders")
     .select("order_code, character_name").eq("id", id).maybeSingle();
   await notifyTelegram(
-    "✦ <b>Custom Adopt delivery completed</b>\\nOrder: <code>" +
-    escapeTelegramHtml(order?.order_code || id) + "</code>\\nCharacter: " +
+    "✦ <b>Custom Adopt delivery completed</b>\nOrder: <code>" +
+    escapeTelegramHtml(order?.order_code || id) + "</code>\nCharacter: " +
     escapeTelegramHtml(order?.character_name || "Custom character"),
   );
 } else if (rpcName === "admin_return_to_shop") {
   const { data: request } = await supabase.from("purchase_requests")
     .select("request_code").eq("id", id).maybeSingle();
   await notifyTelegram(
-    "↩️ <b>Adopt returned to shop</b>\\nRequest: <code>" +
+    "↩️ <b>Adopt returned to shop</b>\nRequest: <code>" +
     escapeTelegramHtml(request?.request_code || id) + "</code>",
   );
 }
