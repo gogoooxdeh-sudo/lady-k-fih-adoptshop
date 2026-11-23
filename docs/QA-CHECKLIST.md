@@ -79,6 +79,9 @@
 - [ ] Confirmed amount equals the request total.
 - [ ] Duplicate payment confirmation does not create another payment.
 - [ ] Unpaid request can be returned to shop and retains history.
+- [ ] Generic inventory edits cannot mark an adopt Sold; only confirmed manual sale or paid delivery can do so.
+- [ ] A Reserved adopt with an active request cannot be made Available without Return to Shop cancelling that request.
+- [ ] A Sold adopt cannot be reopened through ordinary inventory status edits.
 - [ ] Paid request cannot be cancelled or returned to shop.
 - [ ] Manual sale records buyer, license, actual amount, method and ToS acceptance.
 - [ ] Manual sale appears in Sold Archive and can proceed to delivery.
