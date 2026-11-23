@@ -119,21 +119,26 @@ Deno.serve(async (req) => {
         return json({ ok: false, error: "Check the Custom Adopt details and reference image limit." }, 400);
       }
       const stored: Array<Record<string, unknown>> = [];
-      for (let i = 0; i < files.length; i++) {
-        const file = files[i];
-        if (!file.type.startsWith("image/") || file.size <= 0 || file.size > 5 * 1024 * 1024) {
-          return json({ ok: false, error: "Each reference must be an image no larger than 5 MB." }, 400);
+      try {
+        for (let i = 0; i < files.length; i++) {
+          const file = files[i];
+          if (!file.type.startsWith("image/") || file.size <= 0 || file.size > 5 * 1024 * 1024) {
+            throw new Error("Each reference must be an image no larger than 5 MB.");
+          }
+          const ext = (file.name.split(".").pop() || "img").replace(/[^a-zA-Z0-9]/g, "").slice(0, 8) || "img";
+          const path = `custom-requests/${crypto.randomUUID()}/${String(i + 1).padStart(2, "0")}.${ext}`;
+          const { error: uploadError } = await supabase.storage.from("custom-references").upload(path, file, {
+            contentType: file.type, upsert: false,
+          });
+          if (uploadError) throw uploadError;
+          stored.push({
+            storage_path: path, original_filename: file.name.slice(0, 255),
+            mime_type: file.type, file_size: file.size, sort_order: i,
+          });
         }
-        const ext = (file.name.split(".").pop() || "img").replace(/[^a-zA-Z0-9]/g, "").slice(0, 8) || "img";
-        const path = `custom-requests/${crypto.randomUUID()}/${String(i + 1).padStart(2, "0")}.${ext}`;
-        const { error: uploadError } = await supabase.storage.from("custom-references").upload(path, file, {
-          contentType: file.type, upsert: false,
-        });
-        if (uploadError) throw uploadError;
-        stored.push({
-          storage_path: path, original_filename: file.name.slice(0, 255),
-          mime_type: file.type, file_size: file.size, sort_order: i,
-        });
+      } catch (uploadError) {
+        if (stored.length) await supabase.storage.from("custom-references").remove(stored.map((f) => String(f.storage_path)));
+        throw uploadError;
       }
       const { data, error } = await supabase.rpc("public_create_custom_order", {
         p_payload: {
