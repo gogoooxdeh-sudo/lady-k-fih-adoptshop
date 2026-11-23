@@ -13,6 +13,42 @@ const json = (body: unknown, status = 200) =>
 const clean = (v: FormDataEntryValue | null, max = 10000) =>
   typeof v === "string" ? v.trim().slice(0, max) : "";
 
+function escapeTelegramHtml(value: unknown): string {
+  return String(value ?? "").replace(/[&<>"]/g, (char) => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;",
+  })[char]!);
+}
+
+async function notifyTelegram(message: string): Promise<void> {
+  const token = Deno.env.get("TELEGRAM_BOT_TOKEN");
+  const chatId = Deno.env.get("TELEGRAM_CHAT_ID");
+  if (!token || !chatId) {
+    console.warn("[telegram] Notification skipped: Telegram secrets are not configured.");
+    return;
+  }
+  try {
+    const response = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        chat_id: chatId,
+        text: message,
+        parse_mode: "HTML",
+        disable_web_page_preview: true,
+      }),
+    });
+    if (!response.ok) {
+      console.error("[telegram] Message delivery failed with HTTP", response.status);
+    } else {
+      const result = await response.json().catch(() => null);
+      if (!result?.ok) console.error("[telegram] Telegram rejected a notification.");
+    }
+  } catch (error) {
+    console.error("[telegram] Message delivery failed:", error instanceof Error ? error.message : "unknown error");
+  }
+}
+
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
   if (req.method !== "POST") return json({ ok: false, error: "Method not allowed" }, 405);
@@ -107,6 +143,13 @@ Deno.serve(async (req) => {
         },
       });
       if (error) throw error;
+      const request = data && typeof data === "object" ? data as Record<string, unknown> : {};
+      await notifyTelegram(
+        "🛍️ <b>New purchase request</b>\n" +
+        "Request: <code>" + escapeTelegramHtml(request.request_code || "New request") + "</code>\n" +
+        "Adopt: " + escapeTelegramHtml(adoptCode) + "\n" +
+        "License: " + escapeTelegramHtml(license),
+      );
       return json({ ok: true, request: data });
     }
 
@@ -151,6 +194,13 @@ Deno.serve(async (req) => {
         for (const f of stored) await supabase.storage.from("custom-references").remove([String(f.storage_path)]);
         throw error;
       }
+      const request = data && typeof data === "object" ? data as Record<string, unknown> : {};
+      await notifyTelegram(
+        "✦ <b>New Custom Adopt request</b>\n" +
+        "Order: <code>" + escapeTelegramHtml(request.order_code || "New order") + "</code>\n" +
+        "Character: " + escapeTelegramHtml(payload.character_name || "Not specified") + "\n" +
+        "License: " + escapeTelegramHtml(license),
+      );
       return json({ ok: true, request: data });
     }
 
