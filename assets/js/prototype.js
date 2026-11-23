@@ -379,7 +379,23 @@ async function customAction(id,act,nextValue=null){const r=customRequests.find(x
  if(!confirm('Record the client approval of this quotation?'))return;
  const saved=await persistCustomUpdate(r,{client_approved_quote:true,status:'Awaiting Initial Payment'});
  if(saved){renderAll();openCustomDetail(saved)}return
-}if(act==='full-payment'){toast('Custom payment confirmation is being connected to the payment ledger. Do not record this payment here yet.',true);return}if(act==='initial'){toast('Custom payment confirmation is being connected to the payment ledger. Do not record this payment here yet.',true);return}if(act==='progress'){askText('Update design progress','Describe the current design stage…',v=>persistCustomNote(r,'Note',v));return}if(act==='note'){askText('Add private review note','Enter a note for the artist…',v=>persistCustomNote(r,'Note',v));return}if(act==='feedback'){askText('Record client feedback','Enter feedback received…',v=>persistCustomNote(r,'Feedback',v));return}if(act==='suggest'){askText('Record revision suggestion','Enter the client suggestion to review…',v=>persistCustomNote(r,'Suggestion',v,'Pending Review'));return}if(act==='preview'){
+}if(act==='full-payment'){
+ if(r.paymentPlan!=='full'||!r.accepted||!(r.quoteBase>0)||!r.quoteSent||!r.clientApprovedQuote||r.fullPaid||r.initialPaid||r.finalPaid||!r.databaseId){toast('Select Full Payment and confirm an accepted, quoted and client-approved order first.',true);return}
+ if(!confirm('Confirm that the full Custom Adopt payment has actually been received?'))return;
+ try{
+  await window.LKFBackend.admin('confirm-custom-payment',{custom_order_id:r.databaseId,stage:'full-payment',payment_method:r.paymentMethod||'Manual verification'});
+  await loadAdminData();renderAll();
+  const fresh=customRequests.find(x=>x.databaseId===r.databaseId);if(fresh)openCustomDetail(fresh);
+ }catch(error){toast(error?.message||'Custom payment could not be confirmed.',true)}return
+}if(act==='initial'){
+ if(r.paymentPlan==='full'||!r.accepted||!(r.quoteBase>0)||!r.quoteSent||!r.clientApprovedQuote||r.initialPaid||!r.databaseId){toast('Accept the request, send and obtain approval for the quote, and select Split Payment first.',true);return}
+ if(!confirm('Confirm that the initial 60% Custom Adopt payment has actually been received?'))return;
+ try{
+  await window.LKFBackend.admin('confirm-custom-payment',{custom_order_id:r.databaseId,stage:'initial',payment_method:r.paymentMethod||'Manual verification'});
+  await loadAdminData();renderAll();
+  const fresh=customRequests.find(x=>x.databaseId===r.databaseId);if(fresh)openCustomDetail(fresh);
+ }catch(error){toast(error?.message||'Custom payment could not be confirmed.',true)}return
+}if(act==='progress'){askText('Update design progress','Describe the current design stage…',v=>persistCustomNote(r,'Note',v));return}if(act==='note'){askText('Add private review note','Enter a note for the artist…',v=>persistCustomNote(r,'Note',v));return}if(act==='feedback'){askText('Record client feedback','Enter feedback received…',v=>persistCustomNote(r,'Feedback',v));return}if(act==='suggest'){askText('Record revision suggestion','Enter the client suggestion to review…',v=>persistCustomNote(r,'Suggestion',v,'Pending Review'));return}if(act==='preview'){
  if(!(r.initialPaid||r.fullPaid)){toast('Confirm the required payment before recording a preview presentation.',true);return}
  if(!confirm('Record that the design preview was presented?'))return;
  const saved=await persistCustomUpdate(r,{preview_presented:true,status:'Awaiting Final Approval'});
@@ -389,7 +405,15 @@ async function customAction(id,act,nextValue=null){const r=customRequests.find(x
  if(!confirm('Record the client’s final design approval?'))return;
  const saved=await persistCustomUpdate(r,{final_approved:true,status:'Awaiting Final Payment'});
  if(saved){renderAll();openCustomDetail(saved)}return
-}if(act==='final'){toast('Custom payment confirmation is being connected to the payment ledger. Do not record this payment here yet.',true);return}if(act==='delivery'){
+}if(act==='final'){
+ if(r.paymentPlan==='full'||!r.initialPaid||!r.finalApproved||r.finalPaid||!r.databaseId){toast('The final 40% requires confirmed initial payment and recorded final design approval.',true);return}
+ if(!confirm('Confirm that the final 40% Custom Adopt payment has actually been received?'))return;
+ try{
+  await window.LKFBackend.admin('confirm-custom-payment',{custom_order_id:r.databaseId,stage:'final',payment_method:r.paymentMethod||'Manual verification'});
+  await loadAdminData();renderAll();
+  const fresh=customRequests.find(x=>x.databaseId===r.databaseId);if(fresh)openCustomDetail(fresh);
+ }catch(error){toast(error?.message||'Custom payment could not be confirmed.',true)}return
+}if(act==='delivery'){
  if(!(r.fullPaid||r.finalPaid)||r.deliverySimulated){toast('Final payment must be confirmed first; duplicate delivery is blocked.',true);return}
  if(!r.finalApproved||!r.characterName?.trim()||!r.finalArtwork?.url){toast('Record final approval and add the character name and dedicated final artwork before completing delivery.',true);return}
  if(!confirm('Confirm that you have delivered the finished Custom Adopt and complete the order?'))return;
