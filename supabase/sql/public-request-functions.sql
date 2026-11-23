@@ -14,6 +14,7 @@ declare
   v_request_id uuid;
   v_code text;
   v_total numeric;
+  v_license_fee numeric;
 begin
   if coalesce(trim(p_payload->>'full_name'), '') = ''
      or coalesce(trim(p_payload->>'email'), '') = ''
@@ -35,8 +36,15 @@ begin
   values (trim(p_payload->>'full_name'), lower(trim(p_payload->>'email')), trim(p_payload->>'discord'))
   returning id into v_customer_id;
 
-  v_total := coalesce((p_payload->>'base_price')::numeric, v_adopt.price)
-           + coalesce((p_payload->>'license_fee')::numeric, 0);
+  if p_payload->>'license_type' not in ('Personal Use','Commercial Use','Full Rights Transfer') then
+    raise exception 'Invalid license selection';
+  end if;
+  v_license_fee := case p_payload->>'license_type'
+    when 'Personal Use' then 0
+    when 'Commercial Use' then 25
+    when 'Full Rights Transfer' then 75
+  end;
+  v_total := v_adopt.price + v_license_fee;
   v_code := 'PR-' || upper(substr(replace(gen_random_uuid()::text,'-',''),1,10));
 
   insert into public.purchase_requests(
@@ -44,7 +52,7 @@ begin
     total, status, payment_status, terms_accepted, metadata
   ) values (
     v_code, v_adopt.id, v_customer_id, p_payload->>'license_type',
-    v_adopt.price, coalesce((p_payload->>'license_fee')::numeric,0),
+    v_adopt.price, v_license_fee,
     v_total, 'Pending Review', 'Not Sent', true,
     jsonb_build_object('source','public-shop','submitted_at',now())
   ) returning id into v_request_id;
@@ -76,6 +84,7 @@ declare
   v_order_id uuid;
   v_code text;
   v_file jsonb;
+  v_license_fee numeric;
 begin
   if coalesce(trim(p_payload->>'full_name'), '') = ''
      or coalesce(trim(p_payload->>'email'), '') = ''
@@ -88,6 +97,15 @@ begin
   if jsonb_typeof(p_files) <> 'array' or jsonb_array_length(p_files) > 8 then
     raise exception 'A maximum of 8 reference images is allowed';
   end if;
+
+  if p_payload->>'license_type' not in ('Personal Use','Commercial Use','Full Rights Transfer') then
+    raise exception 'Invalid license selection';
+  end if;
+  v_license_fee := case p_payload->>'license_type'
+    when 'Personal Use' then 0
+    when 'Commercial Use' then 25
+    when 'Full Rights Transfer' then 75
+  end;
 
   insert into public.customers(full_name,email,discord_username)
   values (trim(p_payload->>'full_name'), lower(trim(p_payload->>'email')), trim(p_payload->>'discord'))
@@ -103,7 +121,7 @@ begin
     p_payload->>'category',trim(p_payload->>'concept'),p_payload->>'appearance',
     p_payload->>'colors',p_payload->>'clothing',p_payload->>'theme',
     p_payload->>'instructions',p_payload->>'links',p_payload->>'license_type',
-    coalesce((p_payload->>'license_fee')::numeric,0),'New Request',true,
+    v_license_fee,'New Request',true,
     jsonb_build_object('source','public-shop','submitted_at',now())
   ) returning id into v_order_id;
 
