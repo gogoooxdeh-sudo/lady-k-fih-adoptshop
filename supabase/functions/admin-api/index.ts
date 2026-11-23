@@ -989,7 +989,7 @@ return respond({ ok: false, error: "Invalid Custom Adopt order ID." }, 400);
 const filename = typeof body.filename === "string" ? body.filename.trim().slice(0, 180) : "";
 const contentType = typeof body.content_type === "string" ? body.content_type.toLowerCase() : "";
 const fileSize = Number(body.file_size);
-if (!filename || !contentType.startsWith("image/") || !Number.isFinite(fileSize) || fileSize <= 0 || fileSize > 20 * 1024 * 1024) {
+if (!filename || !/^image\\/(jpeg|png|webp|gif|avif)$/.test(contentType) || !Number.isFinite(fileSize) || fileSize <= 0 || fileSize > 20 * 1024 * 1024) {
 return respond({ ok: false, error: "Choose an image up to 20 MB." }, 400);
 }
 const { data: order, error: orderError } = await supabase
