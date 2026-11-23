@@ -258,8 +258,14 @@ if (table === "certificates" && typeof body.status === "string") {
 query = query.eq("status", body.status);
 }
 
+const orderColumn = table === "ownership_records"
+? "acquired_at"
+: table === "shop_settings"
+? "updated_at"
+: "created_at";
+
 const { data, error, count } = await query
-.order("created_at", { ascending: false })
+.order(orderColumn, { ascending: false })
 .range(from, to);
 
 if (error) {
