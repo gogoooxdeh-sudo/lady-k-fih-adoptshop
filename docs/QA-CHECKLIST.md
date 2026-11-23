@@ -3,9 +3,11 @@
 ## Environment safety
 
 - Production storefront visibility is currently **Temporarily Closed**.
-- Do not create test customers, adopts, purchase requests, Custom Adopts, payments, ownership records or certificates in the production database.
-- Run end-to-end workflows only in a separate Supabase development branch with disposable test data.
+- The owner requires **US$0 in additional service costs**. Do not create a paid Supabase development branch or enable paid features.
+- Do not create test customers, adopts, purchase requests, Custom Adopts, payments, ownership records or certificates in the production database without the owner's explicit approval for a controlled test.
+- The Netlify site may be connected to the production Supabase project. Treat any deployed preview as production-connected unless its backend configuration is independently verified.
 - Do not merge `supabase-integration` into `main` or publish Netlify until the owner approves.
+- Safe checks that do not create business records may be performed against the existing project. Full transaction workflows require either a separately configured free test environment or explicit owner approval for clearly identified production test records and a cleanup plan.
 
 ## Non-destructive checks already performed
 
@@ -21,8 +23,10 @@
 - Invalid-payload smoke checks reject malformed purchase, custom, manual-sale, transfer and delivery operations without inserting records.
 - Public request rate-limit function rejects malformed hashes without inserting a rate-limit row.
 - Health advisor has no lints.
+- Current security advisor reports 13 informational RLS-enabled/no-policy notices on tables intended to be accessed only through authenticated Edge Functions; no critical/high finding was reported in that advisor run.
+- Current performance advisor reports unused indexes. These are informational while the business tables are empty and are not a reason to remove indexes before real usage data exists.
 
-## Browser and workflow tests (development branch only)
+## Safe browser checks (no business records)
 
 ### Admin authentication
 - [ ] Valid password creates a session and opens the admin panel.
@@ -40,10 +44,27 @@
 - [ ] Public catalog does not expose database UUIDs, private file paths or URL-like included-file values.
 - [ ] Private artwork is served only through expiring signed URLs.
 
+### Forms and mobile interface
+- [ ] Required-field validation appears clearly for purchase and Custom Adopt forms.
+- [ ] Invalid email, missing Discord, missing ToS acceptance and invalid links are rejected.
+- [ ] The Custom Adopt form enforces 8 images maximum and 5 MB per image.
+- [ ] The interface remains usable at 360 px width.
+- [ ] Modals scroll without hiding save/cancel actions.
+- [ ] Buttons cannot be double-submitted while saving.
+- [ ] Keyboard focus and labels work for forms and dialogs.
+- [ ] Images have useful alternative text.
+
+### Settings and notifications
+- [ ] Store visibility persists after reload.
+- [ ] Each of the eight Telegram notification preferences persists.
+- [ ] Disabled categories do not send notifications.
+- [ ] Test Notification sends only a private test message and creates no business records.
+
+## Transaction workflows requiring an isolated environment or explicit production-test approval
+
 ### Premade purchase
 - [ ] Valid request reserves an Available adopt exactly once.
 - [ ] A second simultaneous request cannot reserve the same adopt.
-- [ ] Invalid email, missing Discord, missing ToS acceptance and invalid license are rejected.
 - [ ] Approval, invoice-sent and payment-pending actions persist after reload.
 - [ ] Payment cannot be confirmed before approval and invoice-sent.
 - [ ] Confirmed amount equals the request total.
@@ -81,21 +102,10 @@
 - [ ] Print/Save as PDF and Download HTML produce the correct certificate.
 - [ ] No certificate is generated before actual delivery.
 
-### Settings and notifications
-- [ ] Store visibility persists after reload.
-- [ ] Each of the eight Telegram notification preferences persists.
-- [ ] Disabled categories do not send notifications.
-- [ ] Test Notification sends only a private test message and creates no business records.
+### Telegram and release gate
 - [ ] Real purchase/custom/payment/delivery events reach Telegram.
-
-### Mobile and accessibility
-- [ ] Admin panel is usable at 360 px width.
-- [ ] Modals scroll without hiding save/cancel actions.
-- [ ] Forms show clear validation errors.
-- [ ] Buttons cannot be double-submitted while saving.
-- [ ] Keyboard focus and labels work for forms and dialogs.
-- [ ] Images have useful alternative text.
-
-## Release gate
-
-Do not publish until all applicable browser tests pass in the development branch, Telegram delivery is confirmed, no high/critical security findings remain, and the owner explicitly approves merge/publish.
+- [ ] Telegram test delivery is confirmed from the admin panel.
+- [ ] No high/critical security findings remain.
+- [ ] All applicable safe browser checks pass.
+- [ ] Transaction workflows pass in an isolated free environment, or the owner explicitly approves a controlled production test and its cleanup.
+- [ ] The owner explicitly approves Netlify publication and, separately, any merge to `main`.
