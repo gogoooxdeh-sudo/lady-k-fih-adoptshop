@@ -422,6 +422,22 @@ return respond({ ok: false, error: "Adopt ID must be 1–80 characters and use o
 if (!name || name.length > 180 || !Number.isFinite(price) || price < 0) {
 return respond({ ok: false, error: "Enter a valid character name and non-negative price." }, 400);
 }
+if (input.status !== undefined && !["Available", "Reserved", "Sold"].includes(String(input.status))) {
+return respond({ ok: false, error: "Choose a valid inventory status." }, 400);
+}
+for (const key of ["public_visible", "featured", "archive_visible"]) {
+if (input[key] !== undefined && typeof input[key] !== "boolean") {
+return respond({ ok: false, error: "Inventory visibility and featured flags must be boolean." }, 400);
+}
+}
+for (const key of ["tags", "files"]) {
+if (input[key] !== undefined && !Array.isArray(input[key])) {
+return respond({ ok: false, error: "Tags and file details must be lists." }, 400);
+}
+}
+if (input.metadata !== undefined && !isObject(input.metadata)) {
+return respond({ ok: false, error: "Inventory metadata must be an object." }, 400);
+}
 const values = pickAllowed(input, [
 "adopt_code", "name", "category", "price", "currency", "status",
 "public_visible", "description", "license_info", "tags", "files",
@@ -640,7 +656,29 @@ const values = pickAllowed(body.values, [
 if (Object.keys(values).length === 0) {
 return respond({ ok: false, error: "No permitted fields supplied." }, 400);
 }
-
+if ("name" in values && (typeof values.name !== "string" || !values.name.trim() || values.name.trim().length > 180)) {
+return respond({ ok: false, error: "Enter a valid character name." }, 400);
+}
+if ("price" in values && (!Number.isFinite(Number(values.price)) || Number(values.price) < 0)) {
+return respond({ ok: false, error: "Adopt price must be a non-negative USD amount." }, 400);
+}
+if ("status" in values && !["Available", "Reserved", "Sold"].includes(String(values.status))) {
+return respond({ ok: false, error: "Choose a valid inventory status." }, 400);
+}
+for (const key of ["public_visible", "featured", "archive_visible"]) {
+if (key in values && typeof values[key] !== "boolean") {
+return respond({ ok: false, error: "Inventory visibility and featured flags must be boolean." }, 400);
+}
+}
+for (const key of ["tags", "files"]) {
+if (key in values && !Array.isArray(values[key])) {
+return respond({ ok: false, error: "Tags and file details must be lists." }, 400);
+}
+}
+if ("metadata" in values && !isObject(values.metadata)) {
+return respond({ ok: false, error: "Inventory metadata must be an object." }, 400);
+}
+if ("currency" in values) values.currency = "USD";
 values.updated_at = new Date().toISOString();
 
 const { data, error } = await supabase
