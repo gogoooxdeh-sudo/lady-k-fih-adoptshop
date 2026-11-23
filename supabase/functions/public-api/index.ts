@@ -157,7 +157,6 @@ Deno.serve(async (req) => {
     return json({ ok: false, error: "Unknown request action." }, 400);
   } catch (error) {
     console.error("[public-api]", error);
-    const message = error instanceof Error ? error.message : "Request could not be submitted.";
-    return json({ ok: false, error: message }, 400);
+    return json({ ok: false, error: "The request could not be completed. Please try again later." }, 500);
   }
 });
