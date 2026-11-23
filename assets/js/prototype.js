@@ -13,7 +13,7 @@ function refreshRuntimeDiag(){
   'Last clicked element: '+runtimeDiag.lastTarget,
   'Last admin view: '+runtimeDiag.lastAdminView,
   'JavaScript errors: '+(runtimeDiag.errors.length?runtimeDiag.errors.join(' | '):'None captured')
- ].join('\\n');
+ ].join('\n');
 }
 function showRuntimeDiagnostics(){
  if(!runtimeDiagPanel){
