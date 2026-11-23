@@ -465,8 +465,20 @@ payment_method: typeof body.payment_method === "string"
 })
 .select("id")
 .single();
-if (paymentError) return respond({ ok: false, error: paymentError.message }, 400);
+if (paymentError) {
+if (paymentError.code !== "23505") return respond({ ok: false, error: paymentError.message }, 400);
+const { data: raced, error: racedError } = await supabase
+.from("payments")
+.select("id, status")
+.eq("purchase_request_id", request.id)
+.eq("stage", stage)
+.maybeSingle();
+if (racedError || !raced) return respond({ ok: false, error: racedError?.message || "Payment record could not be recovered." }, 400);
+if (raced.status === "Confirmed") return respond({ ok: true, already_confirmed: true, payment_id: raced.id });
+paymentId = raced.id;
+} else {
 paymentId = payment.id;
+}
 }
 const { data: confirmation, error: confirmationError } = await supabase.rpc(
 "admin_confirm_payment",
@@ -604,8 +616,20 @@ payment_method: typeof body.payment_method === "string"
 })
 .select("id")
 .single();
-if (paymentError) return respond({ ok: false, error: paymentError.message }, 400);
+if (paymentError) {
+if (paymentError.code !== "23505") return respond({ ok: false, error: paymentError.message }, 400);
+const { data: raced, error: racedError } = await supabase
+.from("payments")
+.select("id, status")
+.eq("custom_order_id", order.id)
+.eq("stage", selected.label)
+.maybeSingle();
+if (racedError || !raced) return respond({ ok: false, error: racedError?.message || "Payment record could not be recovered." }, 400);
+if (raced.status === "Confirmed") return respond({ ok: true, already_confirmed: true, payment_id: raced.id });
+paymentId = raced.id;
+} else {
 paymentId = payment.id;
+}
 }
 const { data: confirmation, error: confirmationError } = await supabase.rpc(
 selected.rpc,
