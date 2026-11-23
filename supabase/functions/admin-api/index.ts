@@ -422,7 +422,7 @@ return respond({ ok: false, error: "Adopt ID must be 1–80 characters and use o
 if (!name || name.length > 180 || !Number.isFinite(price) || price < 0) {
 return respond({ ok: false, error: "Enter a valid character name and non-negative price." }, 400);
 }
-if (input.status !== undefined && !["Available", "Reserved", "Sold"].includes(String(input.status))) {
+if (input.status !== undefined && input.status !== "Available") {
 return respond({ ok: false, error: "Choose a valid inventory status." }, 400);
 }
 for (const key of ["public_visible", "featured", "archive_visible"]) {
@@ -683,8 +683,25 @@ return respond({ ok: false, error: "Enter a valid character name." }, 400);
 if ("price" in values && (!Number.isFinite(Number(values.price)) || Number(values.price) < 0)) {
 return respond({ ok: false, error: "Adopt price must be a non-negative USD amount." }, 400);
 }
-if ("status" in values && !["Available", "Reserved", "Sold"].includes(String(values.status))) {
-return respond({ ok: false, error: "Choose a valid inventory status." }, 400);
+if ("status" in values && !["Available", "Reserved"].includes(String(values.status))) {
+return respond({ ok: false, error: "Sold status can only be recorded through a confirmed manual sale or completed paid delivery." }, 409);
+}
+const { data: currentAdopt, error: currentAdoptError } = await supabase
+.from("adopts").select("status").eq("id", body.id).maybeSingle();
+if (currentAdoptError) return respond({ ok: false, error: currentAdoptError.message }, 400);
+if (!currentAdopt) return respond({ ok: false, error: "Adoptable not found." }, 404);
+if ("status" in values && currentAdopt.status === "Sold" && values.status !== "Sold") {
+return respond({ ok: false, error: "A sold adoptable cannot be reopened through an ordinary status edit. Review its sale and ownership history first." }, 409);
+}
+if ("status" in values && values.status === "Available" && currentAdopt.status === "Reserved") {
+const { data: activeRequests, error: activeRequestsError } = await supabase
+.from("purchase_requests").select("id")
+.eq("adopt_id", body.id).eq("delivered", false)
+.not("status", "in", '("Cancelled","Rejected")').limit(1);
+if (activeRequestsError) return respond({ ok: false, error: activeRequestsError.message }, 400);
+if (activeRequests?.length) {
+return respond({ ok: false, error: "This adoptable has an active purchase request. Use Return to Shop so the request is cancelled and its history is preserved." }, 409);
+}
 }
 for (const key of ["public_visible", "featured", "archive_visible"]) {
 if (key in values && typeof values[key] !== "boolean") {
