@@ -125,9 +125,27 @@ function initCustomForm(){const form=$('#custom-form');customLicense='Personal U
   submit.disabled=false;submit.textContent='Submit Custom Adopt Request';
  }
 });
-}function openAccess(){const root=document.createElement('div');root.className='modal-backdrop';root.innerHTML=`<section class="modal-card access-card" role="dialog" aria-modal="true" aria-labelledby="access-title"><button class="modal-close" aria-label="Close">×</button><span class="hero-star">✧</span><p class="eyebrow">Private area · prototype only</p><h2 id="access-title">Administrator Access</h2><p class="muted">This password field is a future-login visual pattern only. No password is checked or saved.</p><label class="field">Password<input id="demo-password" type="password" autocomplete="off" placeholder="Password field preview"></label><div id="access-message" class="fine"></div><div class="actions"><button class="btn primary" id="demo-login">Log In</button><button class="btn" id="open-admin-demo">Open Admin Demo</button></div><p class="fine">The demo entry is not authentication and does not provide security.</p></section>`;document.body.append(root);root.querySelector('.modal-close').onclick=()=>root.remove();root.addEventListener('click',e=>{if(e.target===root)root.remove()});root.querySelector('#demo-login').onclick=()=>root.querySelector('#access-message').textContent='Real authentication is not implemented. Choose Open Admin Demo to inspect local workflows.';root.querySelector('#open-admin-demo').onclick=()=>{root.remove();openAdmin()}}
-function openAdmin(){const shell=$('#admin-shell');shell.classList.remove('hidden');document.body.style.overflow='hidden';adminGo('dashboard');renderAdmin()}
-function closeAdmin(){ $('#admin-shell').classList.add('hidden');$('#admin-sidebar').classList.remove('open');$('#admin-overlay').classList.add('hidden');document.body.style.overflow='';renderPublic() }
+}function openAccess(){
+ const root=document.createElement('div');root.className='modal-backdrop';
+ root.innerHTML=`<section class="modal-card access-card" role="dialog" aria-modal="true" aria-labelledby="access-title"><button class="modal-close" aria-label="Close">×</button><span class="hero-star">✧</span><p class="eyebrow">Private administrator area</p><h2 id="access-title">Administrator Access</h2><p class="muted">Sign in with the administrator password.</p><form id="real-admin-login"><label class="field">Password<input id="admin-password" type="password" autocomplete="current-password" required></label><div id="access-message" class="fine" role="status"></div><button class="btn primary" id="admin-login-submit" type="submit">Log In</button></form></section>`;
+ document.body.append(root);const close=()=>root.remove();root.querySelector('.modal-close').onclick=close;root.addEventListener('click',e=>{if(e.target===root)close()});
+ root.querySelector('#real-admin-login').addEventListener('submit',async e=>{
+  e.preventDefault();const button=root.querySelector('#admin-login-submit'),message=root.querySelector('#access-message'),password=root.querySelector('#admin-password').value;
+  if(!window.LKFBackend?.ready){message.textContent='Authentication service is unavailable. Please try again later.';return}
+  button.disabled=true;button.textContent='Verifying…';message.textContent='';
+  try{await window.LKFBackend.login(password);root.remove();await openAdmin()}
+  catch(error){message.textContent=error?.message||'Sign-in failed.';button.disabled=false;button.textContent='Log In';root.querySelector('#admin-password').value='';root.querySelector('#admin-password').focus()}
+ });
+}
+async function openAdmin(){
+ if(!window.LKFBackend?.ready||!(await window.LKFBackend.verify())){toast('Administrator session expired. Please sign in again.',true);return}
+ const shell=$('#admin-shell');shell.classList.remove('hidden');document.body.style.overflow='hidden';adminGo('dashboard');renderAdmin();
+}
+async function closeAdmin(){
+ $('#admin-shell').classList.add('hidden');$('#admin-sidebar').classList.remove('open');$('#admin-overlay').classList.add('hidden');document.body.style.overflow='';
+ try{await window.LKFBackend?.logout()}catch(error){console.error('Admin logout failed',error)}
+ renderPublic();
+}
 function adminGo(view){const aliases={adoptables:'inventory','custom-orders':'custom-requests',quotes:'custom-requests','quotes-payments':'custom-requests','in-progress':'custom-requests','completed-orders':'custom-requests',ownership:'archive',certificates:'archive','custom-ownership':'custom-requests','custom-certificates':'custom-requests'};view=aliases[view]||view;$$('.admin-view').forEach(v=>v.classList.toggle('active',v.id===`admin-${view}`));$$('.admin-nav button').forEach(b=>b.classList.toggle('active',b.dataset.admin===view));const names={dashboard:'Dashboard',inventory:'Adoptables',purchase:'Purchase Requests','archive':'Sold Archive','custom-requests':'Custom Orders',settings:'Settings'};$('#admin-crumb').textContent=names[view]||view;$('#admin-sidebar').classList.remove('open');$('#admin-overlay').classList.add('hidden');$('#admin-main').scrollTop=0;renderAdmin()}
 function customIsClosed(r){return ['Completed','Cancelled'].includes(customStatusLabel(r))}
 function customPaymentSummary(r){if(r.fullPaid)return 'Full payment · Confirmed';if(r.initialPaid&&r.finalPaid)return 'Initial 60% · Confirmed · Final 40% · Confirmed';if(r.initialPaid)return 'Initial 60% · Confirmed · Final 40% · Pending';if(r.finalPaid)return 'Initial 60% · Pending · Final 40% · Confirmed';return 'Payment pending'}
