@@ -1226,7 +1226,7 @@ return respond({ ok: false, error: "Final artwork must use this order's private 
 }
 const { data: current, error: currentError } = await supabase
 .from("custom_orders")
-.select("status, initial_paid, final_paid, quote_sent, quote_base, preview_presented, final_artwork_path")
+.select("status, initial_paid, final_paid, quote_sent, quote_base, license_fee, agreed_total, payment_plan, metadata, preview_presented, final_artwork_path")
 .eq("id", body.id)
 .maybeSingle();
 if (currentError) return respond({ ok: false, error: currentError.message }, 400);
@@ -1236,6 +1236,39 @@ return respond({ ok: false, error: "A paid Custom Adopt cannot be rejected or ca
 }
 if (current.status === "Completed") {
 return respond({ ok: false, error: "Completed orders are read-only." }, 409);
+}
+const currentQuoteBase = Number(current.quote_base || 0);
+const currentLicenseFee = Number(current.license_fee || 0);
+const nextQuoteBase = Number(values.quote_base ?? currentQuoteBase);
+const nextTotal = Number(values.agreed_total ?? nextQuoteBase + currentLicenseFee);
+const currentTotal = Number(current.agreed_total ?? currentQuoteBase + currentLicenseFee);
+const quoteChanged = Math.round(nextQuoteBase * 100) !== Math.round(currentQuoteBase * 100)
+  || Math.round(nextTotal * 100) !== Math.round(currentTotal * 100);
+const planChanged = "payment_plan" in values && values.payment_plan !== current.payment_plan;
+const hasConfirmedPayment = current.initial_paid || current.final_paid;
+if (("quote_base" in values || "agreed_total" in values)
+    && (!Number.isFinite(nextQuoteBase) || nextQuoteBase <= 0
+      || !Number.isFinite(nextTotal) || Math.round(nextTotal * 100) !== Math.round((nextQuoteBase + currentLicenseFee) * 100))) {
+return respond({ ok: false, error: "The agreed total must equal the design quote plus the fixed license fee." }, 400);
+}
+if (hasConfirmedPayment && planChanged) {
+return respond({ ok: false, error: "The payment plan cannot be changed after a payment has been confirmed. You can still record an explicit price adjustment." }, 409);
+}
+if (hasConfirmedPayment && quoteChanged) {
+const previousHistory = Array.isArray(current.metadata?.adjustment_history) ? current.metadata.adjustment_history : [];
+const nextHistory = Array.isArray(values.metadata?.adjustment_history) ? values.metadata.adjustment_history : [];
+const adjustment = nextHistory[nextHistory.length - 1];
+const matchesAdjustment = nextHistory.length === previousHistory.length + 1
+  && adjustment && typeof adjustment === "object"
+  && Math.round(Number(adjustment.oldTotal) * 100) === Math.round(currentTotal * 100)
+  && Math.round(Number(adjustment.newTotal) * 100) === Math.round(nextTotal * 100)
+  && adjustment.oldPlan === current.payment_plan
+  && adjustment.newPlan === current.payment_plan
+  && typeof adjustment.date === "string"
+  && Number.isFinite(Date.parse(adjustment.date));
+if (!matchesAdjustment) {
+return respond({ ok: false, error: "A paid order's price can only be adjusted with a matching administrative adjustment history entry." }, 409);
+}
 }
 if (values.client_approved_quote === true && !(current.quote_sent || values.quote_sent === true)) {
 return respond({ ok: false, error: "A quotation must be marked as sent before recording client approval." }, 409);
