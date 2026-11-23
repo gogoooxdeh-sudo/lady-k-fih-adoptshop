@@ -1,4 +1,4 @@
-/* Lady K ★ Fih — AdoptShop interactive frontend demo. No network calls or persistence. */
+/* Lady K ★ Fih — AdoptShop frontend. Public catalog and administrator records use Supabase. */
 (()=>{
 'use strict';
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
