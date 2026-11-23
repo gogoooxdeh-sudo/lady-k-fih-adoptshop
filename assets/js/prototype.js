@@ -88,6 +88,7 @@ async function loadAdminData(){
   result.certificateApproved=(data.certificates.find(z=>z.purchase_request_id===x.id)||{}).status==='Approved';
   return result;
  });
+ adopts.forEach(a=>{if(a.status==='Reserved'){const request=purchaseRequests.find(x=>x.adoptId===a.id&&!['Cancelled','Rejected','Completed','Delivered'].includes(x.status));a.reservationRequestId=request?.id||null}});
  const updatesByCustom=new Map();
  data.custom_order_updates.forEach(x=>{const arr=updatesByCustom.get(x.custom_order_id)||[];arr.push(x);updatesByCustom.set(x.custom_order_id,arr)});
  const refsByCustom=new Map();
