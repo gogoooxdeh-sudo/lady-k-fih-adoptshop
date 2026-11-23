@@ -73,6 +73,8 @@
 - [ ] Valid request reserves an Available adopt exactly once.
 - [ ] A second simultaneous request cannot reserve the same adopt.
 - [ ] Approval, invoice-sent and payment-pending actions persist after reload.
+- [ ] Rejected/cancelled requests cannot be reopened through ordinary status edits.
+- [ ] Invoice-sent and payment-pending confirmations cannot be reversed; paid request history is locked.
 - [ ] Payment cannot be confirmed before approval and invoice-sent.
 - [ ] Confirmed amount equals the request total.
 - [ ] Duplicate payment confirmation does not create another payment.
