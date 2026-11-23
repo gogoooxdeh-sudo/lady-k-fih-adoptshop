@@ -975,6 +975,25 @@ return respond({ ok: false, error: error?.message || "Could not prepare the secu
 return respond({ ok: true, path: storagePath, token: data.token });
 }
 
+async function cleanupFinalArtworkUpload(body: Record<string, unknown>) {
+  if (!validUuid(body.custom_order_id) || typeof body.path !== "string") {
+    return respond({ ok: false, error: "Invalid final artwork cleanup request." }, 400);
+  }
+  const orderId = String(body.custom_order_id);
+  const path = body.path;
+  const prefix = "custom-orders/" + orderId + "/final/";
+  if (!path.startsWith(prefix) || path.includes("..") || path.length > 500) {
+    return respond({ ok: false, error: "Final artwork path is outside this order's private folder." }, 400);
+  }
+  const { data: linked, error: linkedError } = await supabase
+    .from("custom_orders").select("id").eq("id", orderId).eq("final_artwork_path", path).maybeSingle();
+  if (linkedError) return respond({ ok: false, error: linkedError.message }, 400);
+  if (linked) return respond({ ok: true, removed_count: 0 });
+  const { error: removeError } = await supabase.storage.from("private-deliveries").remove([path]);
+  if (removeError) return respond({ ok: false, error: removeError.message }, 400);
+  return respond({ ok: true, removed_count: 1 });
+}
+
 async function confirmCustomPayment(body: Record<string, unknown>) {
 if (!validUuid(body.custom_order_id)) {
 return respond({ ok: false, error: "Invalid Custom Adopt order ID." }, 400);
@@ -1207,7 +1226,7 @@ return respond({ ok: false, error: "Final artwork must use this order's private 
 }
 const { data: current, error: currentError } = await supabase
 .from("custom_orders")
-.select("status, initial_paid, final_paid, quote_sent, quote_base, preview_presented")
+.select("status, initial_paid, final_paid, quote_sent, quote_base, preview_presented, final_artwork_path")
 .eq("id", body.id)
 .maybeSingle();
 if (currentError) return respond({ ok: false, error: currentError.message }, 400);
@@ -1243,6 +1262,14 @@ const { data, error } = await supabase
 
 if (error) return respond({ ok: false, error: error.message }, 400);
 if (!data) return respond({ ok: false, error: "Custom order not found." }, 404);
+
+const previousArtwork = typeof current.final_artwork_path === "string" ? current.final_artwork_path : "";
+const nextArtwork = typeof data.final_artwork_path === "string" ? data.final_artwork_path : "";
+const artworkPrefix = "custom-orders/" + String(body.id) + "/final/";
+if (previousArtwork && previousArtwork !== nextArtwork && previousArtwork.startsWith(artworkPrefix)) {
+  const { error: cleanupError } = await supabase.storage.from("private-deliveries").remove([previousArtwork]);
+  if (cleanupError) console.warn("[AdoptShop] Previous final artwork cleanup failed:", cleanupError.message);
+}
 
 await supabase.from("activity_log").insert({
 entity_type: "custom_order",
@@ -1432,6 +1459,9 @@ return await updatePurchaseRequest(body);
 
 case "create-final-artwork-upload":
 return await createFinalArtworkUpload(body);
+
+case "cleanup-final-artwork-upload":
+return await cleanupFinalArtworkUpload(body);
 
 case "confirm-custom-payment":
 return await confirmCustomPayment(body);
