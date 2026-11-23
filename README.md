@@ -30,7 +30,7 @@ The application uses plain HTML, CSS and JavaScript. Supabase provides persisten
 - Manual premade sales are recorded through an atomic database transaction. Buyer details, the purchase request, confirmed payment, inventory status and activity history are saved together. Duplicate manual sales are blocked by inventory state and active-request checks.
 - Delivery is a separate administrative action. Ownership and the certificate record are created by the existing delivery transaction after delivery is actually completed. Certificates begin in Pending Review and require artist approval.
 - Premade ownership transfers are available only for delivered, paid records carrying the Full Rights Transfer license. The administrator records the new owner, both parties’ consent and supporting notes in one database transaction. The previous owner and certificate remain in history; the previous certificate is marked Superseded and a new certificate is created as Pending Review.
-- Telegram notifications are private administrative alerts sent server-side. They never confirm payments or perform management actions.
+- Telegram notifications are private administrative alerts sent server-side. Their eight event categories can be enabled or disabled from Settings and preferences are persisted in `shop_settings`. They never confirm payments or perform management actions.
 
 ## Manual sale workflow
 
@@ -53,7 +53,7 @@ Open the private Ownership Records view and choose Record Transfer for an eligib
 ## Important limitations
 
 - No payment gateway is connected. Payment confirmation means the artist has independently checked that funds were received.
-- Store availability can be set to Public, Temporarily Closed or Hidden from Public and is enforced by the public API. Store profile/contact editing and notification preference editing are not currently available in the admin panel.
+- Store availability can be set to Public, Temporarily Closed or Hidden from Public and is enforced by the public API. Store profile/contact editing is not currently available in the admin panel. Telegram preference controls are available, but delivery to the Telegram chat has not yet been verified with a real event.
 - Some Custom Adopt workflow controls still require additional integration and browser verification. Do not treat any action as complete unless the panel confirms it was saved and the corresponding database record is present.
 - Certificate review and approval are administrative records; certificate documents do not replace the official Terms of Service.
 - No real customer, inventory, purchase, payment or ownership records were created as part of development or testing.
@@ -72,7 +72,7 @@ The `admin-api` function uses its own password/session authorization, so its Sup
 
 Secrets such as the service-role key, admin password/session secret, Telegram bot token and Telegram chat ID must remain in Supabase Edge Function Secrets. Never place them in browser code, commit them to Git, or paste them into public issue trackers.
 
-Database SQL files document the database functions and hardening changes. The manual-sale transaction is in `supabase/sql/manual-sale-transaction.sql`; it has been installed in the connected Supabase project and is executable only by `service_role`.
+Database SQL files document the database functions and hardening changes. The manual-sale transaction is in `supabase/sql/manual-sale-transaction.sql`; the ownership transfer transaction is in `supabase/sql/ownership-transfer-transaction.sql`; and foreign-key performance indexes are in `supabase/sql/add-missing-foreign-key-indexes.sql`. The privileged transaction functions are executable only by `service_role`.
 
 ## Git and publishing
 
