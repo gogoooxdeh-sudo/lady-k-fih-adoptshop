@@ -1,5 +1,3 @@
--- Persistent premade ownership transfer.
--- The RPC is callable only by service_role; admin-api enforces the signed admin session.
 
 CREATE OR REPLACE FUNCTION public.admin_transfer_ownership(p_payload jsonb)
 RETURNS jsonb
@@ -19,8 +17,8 @@ DECLARE
   v_adopt public.adopts%rowtype;
   v_request public.purchase_requests%rowtype;
   v_current public.ownership_records%rowtype;
-  v_customer_id uuid;
   v_current_owner_email text;
+  v_customer_id uuid;
   v_old_certificate_id uuid;
   v_old_certificate_code text;
   v_new_ownership_id uuid;
@@ -31,7 +29,7 @@ BEGIN
   IF v_adopt_code IS NULL OR v_full_name IS NULL OR v_email IS NULL OR v_notes IS NULL THEN
     RAISE EXCEPTION 'Adopt code, new owner name, email and transfer notes are required.';
   END IF;
-  IF v_email !~* '^[A-Z0-9.!#$%&''*+/=?^_`{|}~-]+@[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?(?:\.[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?)+$' THEN
+  IF v_email !~* '^[^[:space:]@]+@[^[:space:]@]+[.][^[:space:]@]+$' THEN
     RAISE EXCEPTION 'Enter a valid new owner email address.';
   END IF;
   IF NOT (v_previous_consent AND v_new_consent AND v_admin_authorized) THEN
@@ -60,15 +58,13 @@ BEGIN
     RAISE EXCEPTION 'The original purchase and current ownership record do not match.';
   END IF;
 
-  SELECT email INTO v_current_owner_email
-  FROM public.customers WHERE id = v_current.customer_id;
+  SELECT email INTO v_current_owner_email FROM public.customers WHERE id = v_current.customer_id;
   IF lower(coalesce(v_current_owner_email, '')) = v_email THEN
     RAISE EXCEPTION 'The new owner must be different from the current owner.';
   END IF;
 
   PERFORM pg_advisory_xact_lock(hashtextextended(v_email, 0));
-  -- Create a distinct customer snapshot for the new owner. Never overwrite a
-  -- customer row that may be referenced by the previous owner's order history.
+  -- Create a distinct customer snapshot; never overwrite the previous owner's history.
   INSERT INTO public.customers(full_name, email, discord_username)
   VALUES (v_full_name, v_email, v_discord)
   RETURNING id INTO v_customer_id;
