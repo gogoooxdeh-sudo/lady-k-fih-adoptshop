@@ -578,7 +578,7 @@ async function transferOwnership(body: Record<string, unknown>) {
       input.admin_authorized !== true) {
     return respond({ ok: false, error: "Complete the new owner's details, transfer notes and all three confirmations." }, 400);
   }
-  if (!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email)) {
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
     return respond({ ok: false, error: "Enter a valid new owner email address." }, 400);
   }
   const payload = {
@@ -596,10 +596,10 @@ async function transferOwnership(body: Record<string, unknown>) {
   const result = Array.isArray(data) ? data[0] : data;
   if (!result?.ok) return respond({ ok: false, error: "The ownership transfer could not be recorded." }, 400);
   await notifyTelegram(
-    "↔️ <b>Ownership transfer recorded</b>\\nAdopt: <code>" +
-    escapeTelegramHtml(result.adopt_code || adoptCode) + "</code>\\nNew owner: " +
-    escapeTelegramHtml(fullName) + "\\nNew certificate: <code>" +
-    escapeTelegramHtml(result.certificate_code || "") + "</code>\\nStatus: Pending artist review",
+    "↔️ <b>Ownership transfer recorded</b>\nAdopt: <code>" +
+    escapeTelegramHtml(result.adopt_code || adoptCode) + "</code>\nNew owner: " +
+    escapeTelegramHtml(fullName) + "\nNew certificate: <code>" +
+    escapeTelegramHtml(result.certificate_code || "") + "</code>\nStatus: Pending artist review",
   );
   return respond({ ok: true, data: result });
 }
