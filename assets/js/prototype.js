@@ -526,7 +526,7 @@ async function customAction(id,act,nextValue=null){const r=customRequests.find(x
  if(!confirm('Confirm that you have delivered the finished Custom Adopt and complete the order?'))return;
  try{await window.LKFBackend.admin('complete-custom-delivery',{custom_order_id:r.databaseId});await loadAdminData();renderAll();const fresh=customRequests.find(x=>x.databaseId===r.databaseId);if(fresh)openCustomDetail(fresh)}
  catch(error){toast(error?.message||'Custom order could not be completed.',true)}return
-}if(act==='certificate'){toast('Certificate generation will be enabled after the real payment and certificate records are connected.',true);return}if(act==='cancel'){
+}if(act==='certificate'){if(r.certificateId)openCertificatePreview(`custom:${r.id}`);else toast('The certificate is created for artist review after the required payment and actual delivery are recorded.',true);return}if(act==='cancel'){
  if(r.initialPaid||r.finalPaid||r.fullPaid){toast('A paid request cannot be cancelled through this action.',true);return}
  if(!confirm('Cancel '+id+'? The request and its history will be preserved.'))return;
  const saved=await persistCustomUpdate(r,{status:'Cancelled'});
