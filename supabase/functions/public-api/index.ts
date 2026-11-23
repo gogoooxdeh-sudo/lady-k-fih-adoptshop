@@ -1,7 +1,7 @@
 // Lady K ★ Fih AdoptShop — secure public request intake
 // Deploy as Supabase Edge Function: public-api
 // Required secrets: SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY (platform-provided).
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.117.2";
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
