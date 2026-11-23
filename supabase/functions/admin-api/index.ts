@@ -507,6 +507,34 @@ metadata: { changed_fields: Object.keys(values) },
 return respond({ ok: true, data });
 }
 
+async function createFinalArtworkUpload(body: Record<string, unknown>) {
+if (!validUuid(body.custom_order_id)) {
+return respond({ ok: false, error: "Invalid Custom Adopt order ID." }, 400);
+}
+const filename = typeof body.filename === "string" ? body.filename.trim().slice(0, 180) : "";
+const contentType = typeof body.content_type === "string" ? body.content_type.toLowerCase() : "";
+const fileSize = Number(body.file_size);
+if (!filename || !contentType.startsWith("image/") || !Number.isFinite(fileSize) || fileSize <= 0 || fileSize > 20 * 1024 * 1024) {
+return respond({ ok: false, error: "Choose an image up to 20 MB." }, 400);
+}
+const { data: order, error: orderError } = await supabase
+.from("custom_orders")
+.select("id")
+.eq("id", body.custom_order_id)
+.maybeSingle();
+if (orderError) return respond({ ok: false, error: orderError.message }, 400);
+if (!order) return respond({ ok: false, error: "Custom Adopt order not found." }, 404);
+const extension = filename.includes(".") ? filename.split(".").pop()!.toLowerCase().replace(/[^a-z0-9]/g, "").slice(0, 8) : "img";
+const storagePath = "custom-orders/" + String(body.custom_order_id) + "/final/" + crypto.randomUUID() + "." + (extension || "img");
+const { data, error } = await supabase.storage
+.from("private-deliveries")
+.createSignedUploadUrl(storagePath);
+if (error || !data?.token) {
+return respond({ ok: false, error: error?.message || "Could not prepare the secure artwork upload." }, 400);
+}
+return respond({ ok: true, path: storagePath, token: data.token });
+}
+
 async function confirmCustomPayment(body: Record<string, unknown>) {
 if (!validUuid(body.custom_order_id)) {
 return respond({ ok: false, error: "Invalid Custom Adopt order ID." }, 400);
@@ -802,6 +830,9 @@ return await confirmPurchasePayment(body);
 
 case "update-purchase-request":
 return await updatePurchaseRequest(body);
+
+case "create-final-artwork-upload":
+return await createFinalArtworkUpload(body);
 
 case "confirm-custom-payment":
 return await confirmCustomPayment(body);
