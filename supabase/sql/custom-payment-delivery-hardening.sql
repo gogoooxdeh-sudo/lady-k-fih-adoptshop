@@ -5,6 +5,24 @@
 ALTER TABLE public.ownership_records
   ALTER COLUMN adopt_id DROP NOT NULL;
 
+-- One payment per order/stage prevents duplicate confirmations under concurrent clicks.
+CREATE UNIQUE INDEX IF NOT EXISTS payments_purchase_stage_unique
+  ON public.payments (purchase_request_id, stage)
+  WHERE purchase_request_id IS NOT NULL;
+
+CREATE UNIQUE INDEX IF NOT EXISTS payments_custom_stage_unique
+  ON public.payments (custom_order_id, stage)
+  WHERE custom_order_id IS NOT NULL;
+
+-- Each completed order can own only one canonical certificate record.
+CREATE UNIQUE INDEX IF NOT EXISTS certificates_purchase_request_unique
+  ON public.certificates (purchase_request_id)
+  WHERE purchase_request_id IS NOT NULL;
+
+CREATE UNIQUE INDEX IF NOT EXISTS certificates_custom_order_unique
+  ON public.certificates (custom_order_id)
+  WHERE custom_order_id IS NOT NULL;
+
 CREATE OR REPLACE FUNCTION public.admin_confirm_custom_full_payment(p_payment_id uuid)
 RETURNS jsonb
 LANGUAGE plpgsql
