@@ -841,11 +841,33 @@ const values = pickAllowed(body.values, [
 "payment_status",
 "invoice_sent",
 "payment_pending",
-"delivered",
 "metadata",
 ]);
 if (Object.keys(values).length === 0) {
 return respond({ ok: false, error: "No permitted fields supplied." }, 400);
+}
+const allowedStatuses = ["Pending Review", "Clarification Requested", "Approved", "Rejected", "Cancelled"];
+const allowedPaymentStatuses = ["Not Sent", "Invoice Sent", "Payment Pending"];
+if ("status" in values && !allowedStatuses.includes(String(values.status))) {
+return respond({ ok: false, error: "Purchase status must be changed through an allowed review action." }, 400);
+}
+if ("payment_status" in values && !allowedPaymentStatuses.includes(String(values.payment_status))) {
+return respond({ ok: false, error: "Payment status can only be changed by the payment workflow." }, 400);
+}
+for (const key of ["invoice_sent", "payment_pending"]) {
+if (key in values && typeof values[key] !== "boolean") {
+return respond({ ok: false, error: "Invoice and pending-payment flags must be boolean." }, 400);
+}
+}
+if ("metadata" in values && !isObject(values.metadata)) {
+return respond({ ok: false, error: "Purchase metadata must be an object." }, 400);
+}
+const { data: current, error: currentError } = await supabase
+.from("purchase_requests").select("paid, status").eq("id", body.id).maybeSingle();
+if (currentError) return respond({ ok: false, error: currentError.message }, 400);
+if (!current) return respond({ ok: false, error: "Purchase request not found." }, 404);
+if (current.paid && ["Rejected", "Cancelled"].includes(String(values.status || ""))) {
+return respond({ ok: false, error: "A paid purchase request cannot be rejected or cancelled." }, 409);
 }
 values.updated_at = new Date().toISOString();
 const { data, error } = await supabase
@@ -1071,32 +1093,86 @@ const values = pickAllowed(body.values, [
 "theme",
 "instructions",
 "links",
-"license_type",
-"license_fee",
 "status",
 "quote_base",
 "agreed_total",
 "quote_sent",
 "client_approved_quote",
 "payment_plan",
-"initial_paid",
-"initial_paid_at",
 "preview_presented",
 "preview_presented_at",
 "final_approved",
 "final_approved_at",
-"final_paid",
-"final_paid_at",
 "final_artwork_path",
-"delivery_at",
-"terms_accepted",
 "metadata",
 ]);
 
 if (Object.keys(values).length === 0) {
 return respond({ ok: false, error: "No permitted fields supplied." }, 400);
 }
-
+const allowedStatuses = [
+"New Request", "Pending Review", "Clarification Requested", "Approved",
+"Rejected", "Cancelled", "Quote Pending", "Awaiting Client Approval",
+"Awaiting Initial Payment", "In Progress", "Awaiting Final Approval",
+"Awaiting Final Payment", "Awaiting Delivery", "Ready for Delivery",
+];
+if ("status" in values && !allowedStatuses.includes(String(values.status))) {
+return respond({ ok: false, error: "Completed orders can only be set by the verified delivery workflow." }, 400);
+}
+if ("payment_plan" in values && !["full", "split"].includes(String(values.payment_plan))) {
+return respond({ ok: false, error: "Select Full Payment or Split Payment." }, 400);
+}
+for (const key of ["quote_base", "agreed_total"]) {
+if (key in values && (!Number.isFinite(Number(values[key])) || Number(values[key]) <= 0 || Number(values[key]) > 100000)) {
+return respond({ ok: false, error: "Quotation amounts must be greater than zero and no more than $100,000 USD." }, 400);
+}
+}
+if ("quote_sent" in values && typeof values.quote_sent !== "boolean") {
+return respond({ ok: false, error: "Quote-sent status must be boolean." }, 400);
+}
+if ("client_approved_quote" in values && typeof values.client_approved_quote !== "boolean") {
+return respond({ ok: false, error: "Client quote approval must be boolean." }, 400);
+}
+if ("preview_presented" in values && typeof values.preview_presented !== "boolean") {
+return respond({ ok: false, error: "Preview presentation status must be boolean." }, 400);
+}
+if ("final_approved" in values && typeof values.final_approved !== "boolean") {
+return respond({ ok: false, error: "Final approval status must be boolean." }, 400);
+}
+if ("metadata" in values && !isObject(values.metadata)) {
+return respond({ ok: false, error: "Custom order metadata must be an object." }, 400);
+}
+if ("final_artwork_path" in values && values.final_artwork_path !== null) {
+const expectedPrefix = "custom-orders/" + String(body.id) + "/final/";
+if (typeof values.final_artwork_path !== "string" || !values.final_artwork_path.startsWith(expectedPrefix) || values.final_artwork_path.includes("..")) {
+return respond({ ok: false, error: "Final artwork must use this order's private delivery folder." }, 400);
+}
+}
+const { data: current, error: currentError } = await supabase
+.from("custom_orders")
+.select("status, initial_paid, final_paid, quote_sent, quote_base, preview_presented")
+.eq("id", body.id)
+.maybeSingle();
+if (currentError) return respond({ ok: false, error: currentError.message }, 400);
+if (!current) return respond({ ok: false, error: "Custom order not found." }, 404);
+if ((current.initial_paid || current.final_paid) && ["Rejected", "Cancelled"].includes(String(values.status || ""))) {
+return respond({ ok: false, error: "A paid Custom Adopt cannot be rejected or cancelled." }, 409);
+}
+if (current.status === "Completed") {
+return respond({ ok: false, error: "Completed orders are read-only." }, 409);
+}
+if (values.client_approved_quote === true && !(current.quote_sent || values.quote_sent === true)) {
+return respond({ ok: false, error: "A quotation must be marked as sent before recording client approval." }, 409);
+}
+if (values.preview_presented === true && !(current.initial_paid || current.final_paid)) {
+return respond({ ok: false, error: "A design preview can only be recorded after payment has been confirmed." }, 409);
+}
+if (values.final_approved === true && !(current.preview_presented || values.preview_presented === true)) {
+return respond({ ok: false, error: "A preview must be recorded before final design approval." }, 409);
+}
+if (values.quote_sent === true && !(Number(values.quote_base ?? current.quote_base) > 0)) {
+return respond({ ok: false, error: "Set a valid design quotation before marking it as sent." }, 409);
+}
 values.updated_at = new Date().toISOString();
 
 const { data, error } = await supabase
@@ -1302,13 +1378,6 @@ return await reviewCustomSuggestion(body);
 
 case "update-custom-order":
 return await updateCustomOrder(body);
-
-case "confirm-payment":
-return await callTransaction(
-"admin_confirm_payment",
-String(body.payment_id ?? ""),
-"p_payment_id",
-);
 
 case "return-to-shop":
 return await callTransaction(
