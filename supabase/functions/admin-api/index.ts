@@ -333,7 +333,7 @@ if (!storagePath) return { ...row, signed_url: null };
 const { data: signed, error: signedError } = await supabase.storage
 .from(bucket)
 .createSignedUrl(storagePath, 1800);
-return { ...row, signed_url: signedError ? null : signed?.signedUrl ?? null };
+return { ...row, signed_url: signedError ? null : signed?.signedUrl ?? null, signed_url_error: signedError ? signedError.message : null };
 }));
 } else if (table === "custom_orders") {
 outputData = await Promise.all(outputData.map(async (row: Record<string, unknown>) => {
@@ -566,6 +566,53 @@ async function cleanupAdoptImageUploads(body: Record<string, unknown>) {
   const { error: removeError } = await supabase.storage.from("adoptables").remove(unlinkedPaths);
   if (removeError) return respond({ ok: false, error: removeError.message }, 400);
   return respond({ ok: true, removed_count: unlinkedPaths.length });
+}
+
+async function deleteRecord(body: Record<string, unknown>) {
+  const kind = body.record_type === "adopt" ? "adopt" : body.record_type === "custom" ? "custom" : "";
+  const id = body.id;
+  if (!kind || !validUuid(id)) return respond({ ok: false, error: "Invalid record deletion request." }, 400);
+  const rpcName = kind === "adopt" ? "admin_delete_adopt" : "admin_delete_custom_order";
+  const { data, error } = await supabase.rpc(rpcName, kind === "adopt" ? { p_adopt_id: id } : { p_custom_order_id: id });
+  if (error) return respond({ ok: false, error: error.message }, 409);
+  const result = (Array.isArray(data) ? data[0] : data) as Record<string, unknown> | null;
+  if (!result?.ok) return respond({ ok: false, error: "The record could not be deleted." }, 409);
+  const cleanupErrors: string[] = [];
+  const remove = async (bucket: string, paths: unknown[]) => {
+    const valid = [...new Set(paths.filter((p): p is string => typeof p === "string" && p.length > 0 && !p.includes("..")))];
+    if (!valid.length) return;
+    const { error: storageError } = await supabase.storage.from(bucket).remove(valid);
+    if (storageError) cleanupErrors.push(bucket + ": " + storageError.message);
+  };
+  if (kind === "adopt") {
+    await remove("adoptables", Array.isArray(result.storage_paths) ? result.storage_paths : []);
+  } else {
+    await remove("custom-references", Array.isArray(result.reference_paths) ? result.reference_paths : []);
+    if (typeof result.final_artwork_path === "string" && result.final_artwork_path) {
+      await remove("private-deliveries", [result.final_artwork_path]);
+    }
+  }
+  return respond({ ok: true, deleted: true, cleanup_warning: cleanupErrors.length ? cleanupErrors.join("; ") : null });
+}
+
+async function setCustomArchiveVisibility(body: Record<string, unknown>) {
+  if (!validUuid(body.custom_order_id) || typeof body.visible !== "boolean") {
+    return respond({ ok: false, error: "Invalid Custom archive visibility request." }, 400);
+  }
+  const { data, error } = await supabase.from("custom_orders")
+    .update({ public_archive_visible: body.visible, updated_at: new Date().toISOString() })
+    .eq("id", body.custom_order_id).eq("status", "Completed")
+    .not("final_artwork_path", "is", null).not("final_artwork_saved_at", "is", null)
+    .select("id, public_archive_visible").maybeSingle();
+  if (error) return respond({ ok: false, error: error.message }, 400);
+  if (!data) return respond({ ok: false, error: "Only a registered, completed Custom can be hidden from the public archive." }, 409);
+  await supabase.from("activity_log").insert({
+    entity_type: "custom_order", entity_id: data.id,
+    action: body.visible ? "custom_archive_restored" : "custom_archive_hidden",
+    description: body.visible ? "Completed Custom restored to public archive" : "Completed Custom hidden from public archive",
+    metadata: { public_archive_visible: body.visible },
+  });
+  return respond({ ok: true, data });
 }
 
 async function sendTelegramTest() {
@@ -994,11 +1041,12 @@ return respond({ ok: false, error: "Choose an image up to 20 MB." }, 400);
 }
 const { data: order, error: orderError } = await supabase
 .from("custom_orders")
-.select("id")
+.select("id, final_paid")
 .eq("id", body.custom_order_id)
 .maybeSingle();
 if (orderError) return respond({ ok: false, error: orderError.message }, 400);
 if (!order) return respond({ ok: false, error: "Custom Adopt order not found." }, 404);
+if (!order.final_paid) return respond({ ok: false, error: "Confirm the full payment before uploading final Custom artwork." }, 409);
 const extension = filename.includes(".") ? filename.split(".").pop()!.toLowerCase().replace(/[^a-z0-9]/g, "").slice(0, 8) : "img";
 const storagePath = "custom-orders/" + String(body.custom_order_id) + "/final/" + crypto.randomUUID() + "." + (extension || "img");
 const { data, error } = await supabase.storage
@@ -1037,7 +1085,7 @@ const requestedStage = String(body.stage ?? "").toLowerCase();
 const stageMap: Record<string, { label: string; rpc: string; fraction: number }> = {
 full: { label: "Full payment · 100%", rpc: "admin_confirm_custom_full_payment", fraction: 1 },
 initial: { label: "Initial payment · 60%", rpc: "admin_confirm_payment", fraction: 0.6 },
-final: { label: "Final payment · 40%", rpc: "admin_confirm_payment", fraction: 0.4 },
+final: { label: "Final payment · 40%", rpc: "admin_confirm_custom_final_payment", fraction: 0.4 },
 };
 const selected = stageMap[requestedStage];
 if (!selected) return respond({ ok: false, error: "Unknown payment stage." }, 400);
@@ -1062,8 +1110,8 @@ return respond({ ok: false, error: "This order is not eligible for a full paymen
 return respond({ ok: false, error: "This order uses the Full Payment plan." }, 409);
 } else if (requestedStage === "initial" && order.initial_paid) {
 return respond({ ok: true, already_confirmed: true });
-} else if (requestedStage === "final" && (!order.initial_paid || !order.final_approved || order.final_paid || !order.final_artwork_path || !String(order.character_name || "").trim())) {
-return respond({ ok: false, error: "Before confirming the final 40%, save the finished character name and final artwork and record final approval." }, 409);
+} else if (requestedStage === "final" && (!order.initial_paid || !order.final_approved || order.final_paid)) {
+return respond({ ok: false, error: "Confirm the initial 60% and record final design approval before confirming the final 40%." }, 409);
 }
 
 const amount = Number((total * selected.fraction).toFixed(2));
@@ -1133,14 +1181,12 @@ await notifyTelegram(
   "Remaining: <b>$" + escapeTelegramHtml(remaining.toFixed(2)) + " USD</b>",
   "custom_payment_confirmation",
 );
-if (requestedStage === "final") {
+if (requestedStage !== "initial") {
   await notifyTelegram(
-    "📦 <b>Custom delivery completed</b>\n" +
+    "✓ <b>Custom payment completed — final artwork pending</b>\n" +
     "Request: <code>" + escapeTelegramHtml(order.order_code || order.id) + "</code>\n" +
-    "Character: " + escapeTelegramHtml(order.character_name || "Custom character") + "\n" +
-    "License: " + escapeTelegramHtml(order.license_type || "Personal Use") + "\n" +
-    "Total: <b>$" + escapeTelegramHtml(total.toFixed(2)) + " USD</b>",
-    "custom_delivery_complete",
+    "The request is marked Completed. Open its record to add the final artwork and attribution.",
+    "custom_payment_confirmation",
   );
 }
 return respond({ ok: true, payment_id: paymentId, amount, stage: selected.label, data: confirmation });
@@ -1212,6 +1258,7 @@ return respond({ ok: false, error: "Invalid custom order update." }, 400);
 
 const values = pickAllowed(body.values, [
 "character_name",
+"original_idea_by",
 "category",
 "concept",
 "appearance",
@@ -1284,7 +1331,10 @@ if ((current.initial_paid || current.final_paid) && ["Rejected", "Cancelled"].in
 return respond({ ok: false, error: "A paid Custom Adopt cannot be rejected or cancelled." }, 409);
 }
 if (current.status === "Completed") {
-return respond({ ok: false, error: "Completed orders are read-only." }, 409);
+  const allowedPostPaymentFields = new Set(["character_name", "original_idea_by", "final_artwork_path", "metadata", "preview_presented", "final_approved"]);
+  if (Object.keys(values).some((key) => !allowedPostPaymentFields.has(key))) {
+    return respond({ ok: false, error: "A paid Completed order only allows final artwork and attribution details to be registered." }, 409);
+  }
 }
 const currentQuoteBase = Number(current.quote_base || 0);
 const currentLicenseFee = Number(current.license_fee || 0);
@@ -1445,17 +1495,15 @@ if (rpcName === "admin_complete_purchase_delivery") {
     (request?.total != null ? "\nTotal: $" + escapeTelegramHtml(Number(request.total).toFixed(2)) + " USD" : ""),
   );
 } else if (rpcName === "admin_complete_custom_delivery") {
-  if (data?.already_completed !== true) {
+  if (data?.already_registered !== true) {
     const { data: order } = await supabase.from("custom_orders")
-      .select("order_code, character_name, license_type, agreed_total, quote_base, license_fee")
+      .select("order_code, character_name, license_type")
       .eq("id", id).maybeSingle();
-    const total = Number(order?.agreed_total ?? (Number(order?.quote_base || 0) + Number(order?.license_fee || 0)));
     await notifyTelegram(
-      "📦 <b>Custom delivery completed</b>\nRequest: <code>" +
+      "✦ <b>Final Custom artwork registered</b>\nRequest: <code>" +
       escapeTelegramHtml(order?.order_code || id) + "</code>\nCharacter: " +
-      escapeTelegramHtml(order?.character_name || "Custom character") + "\nLicense: " +
-      escapeTelegramHtml(order?.license_type || "Personal Use") + "\nTotal: <b>$" +
-      escapeTelegramHtml(total.toFixed(2)) + " USD</b>",
+      escapeTelegramHtml(order?.character_name || "Custom character") +
+      "\nCertificate created for artist review. Customer delivery is still a separate action.",
       "custom_delivery_complete",
     );
   }
@@ -1524,6 +1572,12 @@ return await cleanupAdoptImageUploads(body);
 
 case "update-adopt":
 return await updateAdopt(body);
+
+case "delete-record":
+return await deleteRecord(body);
+
+case "set-custom-archive-visibility":
+return await setCustomArchiveVisibility(body);
 
 case "update-store-visibility":
 return await updateStoreVisibility(body);

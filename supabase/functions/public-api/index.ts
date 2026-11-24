@@ -191,17 +191,19 @@ Deno.serve(async (req) => {
       }
       const { data: completedCustoms, error: customArchiveError } = await supabase
         .from("custom_orders")
-        .select("order_code, character_name, category, final_artwork_path, delivery_at, created_at")
+        .select("order_code, character_name, category, final_artwork_path, final_artwork_saved_at, public_archive_visible, created_at")
         .eq("status", "Completed")
+        .eq("public_archive_visible", true)
         .not("final_artwork_path", "is", null)
-        .order("delivery_at", { ascending: false, nullsFirst: false });
+        .not("final_artwork_saved_at", "is", null)
+        .order("final_artwork_saved_at", { ascending: false, nullsFirst: false });
       if (customArchiveError) throw customArchiveError;
       const customArchive = [];
       for (const order of completedCustoms || []) {
         if (!order.final_artwork_path) continue;
         const { data: signed, error: signError } = await supabase.storage.from("private-deliveries").createSignedUrl(order.final_artwork_path, 86400);
         if (signError || !signed?.signedUrl) continue;
-        customArchive.push({ id: order.order_code, name: order.character_name || "Custom character", category: order.category || "Custom design", imageUrl: signed.signedUrl, completedAt: order.delivery_at || order.created_at });
+        customArchive.push({ id: order.order_code, name: order.character_name || "Custom character", category: order.category || "Custom design", imageUrl: signed.signedUrl, completedAt: order.final_artwork_saved_at || order.created_at });
       }
       return json({ ok: true, adopts: items, customArchive, storeVisibility });
     }
@@ -326,7 +328,22 @@ Deno.serve(async (req) => {
         throw error;
       }
       const request = data && typeof data === "object" ? data as Record<string, unknown> : {};
-      console.info("[public-api] Custom request saved:", request.order_code || "record created");
+      let verifiedReferenceCount = 0;
+      if (typeof request.id === "string") {
+        const { data: linkedFiles, error: linkedFilesError } = await supabase
+          .from("custom_reference_files").select("id").eq("custom_order_id", request.id);
+        if (linkedFilesError) {
+          console.error("[public-api] Could not verify linked Custom references:", linkedFilesError.message);
+        } else {
+          verifiedReferenceCount = linkedFiles?.length || 0;
+          if (verifiedReferenceCount !== stored.length) {
+            console.error("[public-api] Reference count mismatch:", { expected: stored.length, linked: verifiedReferenceCount, order_code: request.order_code });
+          }
+        }
+      }
+      request.reference_count = verifiedReferenceCount;
+      request.references_verified = verifiedReferenceCount === stored.length;
+      console.info("[public-api] Custom request saved:", request.order_code || "record created", "references:", verifiedReferenceCount, "/", stored.length);
       const computedLicenseFee = license === "Commercial Use" ? 25 : license === "Full Rights Transfer" ? 75 : 0;
       let pricingRow: Record<string, unknown> | null = null;
       if (typeof request.id === "string") {
@@ -375,7 +392,7 @@ Deno.serve(async (req) => {
       );
       return json({
         ok: true,
-        request: { ...request, quote_base: basePrice, license_fee: licenseFee, initial_total: initialTotal },
+        request: { ...request, quote_base: basePrice, license_fee: licenseFee, initial_total: initialTotal, reference_count: verifiedReferenceCount, references_verified: request.references_verified === true },
       });
     }
 
