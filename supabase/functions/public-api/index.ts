@@ -134,12 +134,22 @@ Deno.serve(async (req) => {
       if (storeVisibility === "Hidden from Public") {
         return json({ ok: true, adopts: [], customArchive: [], storeVisibility });
       }
-      const { data: rows, error: catalogError } = await supabase
+      const { data: activeRows, error: activeCatalogError } = await supabase
         .from("adopts")
         .select("*")
-        .or("and(status.eq.Available,public_visible.eq.true),and(status.eq.Reserved,public_visible.eq.true),and(status.eq.Sold,archive_visible.eq.true)")
+        .in("status", ["Available", "Reserved"])
+        .eq("public_visible", true)
         .order("created_at", { ascending: false });
-      if (catalogError) throw catalogError;
+      if (activeCatalogError) throw activeCatalogError;
+      const { data: soldRows, error: soldCatalogError } = await supabase
+        .from("adopts")
+        .select("*")
+        .eq("status", "Sold")
+        .eq("archive_visible", true)
+        .order("created_at", { ascending: false });
+      if (soldCatalogError) throw soldCatalogError;
+      const rows = [...(activeRows || []), ...(soldRows || [])]
+        .sort((a, b) => String(b.created_at || "").localeCompare(String(a.created_at || "")));
       const items = [];
       for (const row of rows || []) {
         const { data: imageRows, error: imageError } = await supabase
@@ -316,11 +326,21 @@ Deno.serve(async (req) => {
       }
       const request = data && typeof data === "object" ? data as Record<string, unknown> : {};
       console.info("[public-api] Custom request saved:", request.order_code || "record created");
+      const customSummary = [
+        payload.concept, payload.appearance, payload.colors, payload.clothing,
+        payload.theme, payload.instructions,
+      ].filter((value) => typeof value === "string" && value.trim()).join(" · ").slice(0, 700);
       await notifyTelegram(
-        "✦ <b>New Custom Adopt request</b>\n" +
-        "Order: <code>" + escapeTelegramHtml(request.order_code || "New order") + "</code>\n" +
+        "🛍️ <b>New Custom request</b>\n" +
+        "Request: <code>" + escapeTelegramHtml(request.order_code || request.id || "New request") + "</code>\n" +
+        "Client: " + escapeTelegramHtml(fullName) + "\n" +
+        "Email: " + escapeTelegramHtml(email) + "\n" +
+        "Discord: " + escapeTelegramHtml(discord) + "\n" +
         "Character: " + escapeTelegramHtml(payload.character_name || "Not specified") + "\n" +
-        "License: " + escapeTelegramHtml(license),
+        "Category: " + escapeTelegramHtml(payload.category || "Other") + "\n" +
+        "License: " + escapeTelegramHtml(license) + "\n" +
+        "Description: " + escapeTelegramHtml(customSummary || "No additional description") + "\n" +
+        "References: " + stored.length,
         supabase,
         "custom_request",
       );
