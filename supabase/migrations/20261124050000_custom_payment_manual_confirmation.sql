@@ -22,7 +22,7 @@ BEGIN
   SELECT * INTO v_order FROM public.custom_orders WHERE id=v_payment.custom_order_id FOR UPDATE;
   IF NOT FOUND THEN RAISE EXCEPTION 'Custom order not found'; END IF;
   v_total:=round(COALESCE(v_order.agreed_total,v_order.quote_base+v_order.license_fee),2);
-  IF v_order.payment_plan<>'full' OR v_order.initial_paid OR v_order.final_paid
+  IF v_order.payment_plan IS DISTINCT FROM 'full' OR v_order.initial_paid OR v_order.final_paid
      OR v_order.status IN ('Rejected','Cancelled','Completed') OR v_total<=0
      OR round(v_payment.amount,2)<>v_total THEN
     RAISE EXCEPTION 'Full payment requires an unpaid Full Payment order and the exact agreed total';
@@ -65,7 +65,7 @@ BEGIN
   IF NOT FOUND THEN RAISE EXCEPTION 'Custom order not found'; END IF;
   v_total:=round(COALESCE(v_order.agreed_total,v_order.quote_base+v_order.license_fee),2);
   v_expected:=round(v_total*.40,2);
-  IF v_order.payment_plan<>'split' OR NOT v_order.initial_paid OR v_order.final_paid
+  IF v_order.payment_plan IS DISTINCT FROM 'split' OR NOT v_order.initial_paid OR v_order.final_paid
      OR v_order.status IN ('Rejected','Cancelled','Completed') OR v_expected<=0
      OR round(v_payment.amount,2)<>v_expected THEN
     RAISE EXCEPTION 'Final 40 percent requires a confirmed initial 60 percent and the exact remaining amount';
@@ -146,7 +146,7 @@ BEGIN
 
     IF lower(v_payment.stage) LIKE '%initial%' THEN
       v_expected:=round(v_total*.60,2);
-      IF v_order.payment_plan='full' OR v_order.initial_paid OR v_order.final_paid
+      IF v_order.payment_plan IS DISTINCT FROM 'split' OR v_order.initial_paid OR v_order.final_paid
          OR round(v_payment.amount,2)<>v_expected THEN
         RAISE EXCEPTION 'Initial payment must equal 60 percent of the agreed total on a Split Payment order';
       END IF;
@@ -157,7 +157,7 @@ BEGIN
 
     ELSIF lower(v_payment.stage) LIKE '%final%' THEN
       v_expected:=round(v_total*.40,2);
-      IF v_order.payment_plan='full' OR NOT v_order.initial_paid OR v_order.final_paid
+      IF v_order.payment_plan IS DISTINCT FROM 'split' OR NOT v_order.initial_paid OR v_order.final_paid
          OR round(v_payment.amount,2)<>v_expected THEN
         RAISE EXCEPTION 'Final payment requires the initial 60 percent and the exact remaining 40 percent';
       END IF;
