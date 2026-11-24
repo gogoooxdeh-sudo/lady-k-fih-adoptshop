@@ -91,8 +91,18 @@ BEGIN
           AND shared.custom_order_id<>p_custom_order_id
       );
 
-  SELECT final_artwork_path INTO v_final_artwork_path
-    FROM public.custom_orders WHERE id=p_custom_order_id;
+  SELECT CASE
+      WHEN own.final_artwork_path IS NOT NULL
+       AND NOT EXISTS (
+         SELECT 1 FROM public.custom_orders shared
+         WHERE shared.id<>p_custom_order_id
+           AND shared.final_artwork_path=own.final_artwork_path
+       )
+      THEN own.final_artwork_path
+      ELSE NULL
+    END
+    INTO v_final_artwork_path
+    FROM public.custom_orders own WHERE own.id=p_custom_order_id;
 
   SELECT COALESCE(array_agg(id),ARRAY[]::uuid[])
     INTO v_payment_ids
