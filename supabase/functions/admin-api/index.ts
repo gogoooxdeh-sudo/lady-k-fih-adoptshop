@@ -1041,12 +1041,12 @@ return respond({ ok: false, error: "Choose an image up to 20 MB." }, 400);
 }
 const { data: order, error: orderError } = await supabase
 .from("custom_orders")
-.select("id, final_paid")
+.select("id, final_paid, status")
 .eq("id", body.custom_order_id)
 .maybeSingle();
 if (orderError) return respond({ ok: false, error: orderError.message }, 400);
 if (!order) return respond({ ok: false, error: "Custom Adopt order not found." }, 404);
-if (!order.final_paid) return respond({ ok: false, error: "Confirm the full payment before uploading final Custom artwork." }, 409);
+if (!order.final_paid || order.status !== "Completed") return respond({ ok: false, error: "Confirm the required payment and delivery first. Final artwork can only be uploaded after the order is Completed." }, 409);
 const extension = filename.includes(".") ? filename.split(".").pop()!.toLowerCase().replace(/[^a-z0-9]/g, "").slice(0, 8) : "img";
 const storagePath = "custom-orders/" + String(body.custom_order_id) + "/final/" + crypto.randomUUID() + "." + (extension || "img");
 const { data, error } = await supabase.storage
@@ -1075,6 +1075,46 @@ async function cleanupFinalArtworkUpload(body: Record<string, unknown>) {
   const { error: removeError } = await supabase.storage.from("private-deliveries").remove([path]);
   if (removeError) return respond({ ok: false, error: removeError.message }, 400);
   return respond({ ok: true, removed_count: 1 });
+}
+
+async function confirmCustomDelivery(body: Record<string, unknown>) {
+  if (!validUuid(body.custom_order_id)) return respond({ ok: false, error: "Invalid Custom Adopt order ID." }, 400);
+  const { data: order, error } = await supabase.from("custom_orders")
+    .select("id, order_code, payment_plan, final_paid, status")
+    .eq("id", body.custom_order_id).maybeSingle();
+  if (error) return respond({ ok: false, error: error.message }, 400);
+  if (!order) return respond({ ok: false, error: "Custom Adopt order not found." }, 404);
+  if (order.payment_plan !== "full" || !order.final_paid || order.status !== "In Progress") {
+    return respond({ ok: false, error: "Only a fully paid Full Payment order in progress can have delivery confirmed." }, 409);
+  }
+  const { data, error: rpcError } = await supabase.rpc("admin_confirm_custom_delivery", {
+    p_custom_order_id: body.custom_order_id,
+  });
+  if (rpcError) return respond({ ok: false, error: rpcError.message }, 409);
+  if (!data?.ok) return respond({ ok: false, error: "Delivery confirmation was not completed." }, 409);
+  await notifyTelegram(
+    "✓ <b>Custom delivery confirmed</b>\\n" +
+    "Request: <code>" + escapeTelegramHtml(order.order_code || order.id) + "</code>\\n" +
+    "The order is Completed. Final artwork registration is now available.",
+    "delivery_complete",
+  );
+  return respond({ ok: true, data });
+}
+
+async function registerCustomDelivery(body: Record<string, unknown>) {
+  if (!validUuid(body.custom_order_id)) return respond({ ok: false, error: "Invalid Custom Adopt order ID." }, 400);
+  const { data: order, error } = await supabase.from("custom_orders")
+    .select("id, status, final_paid, character_name, original_idea_by, final_artwork_path")
+    .eq("id", body.custom_order_id).maybeSingle();
+  if (error) return respond({ ok: false, error: error.message }, 400);
+  if (!order) return respond({ ok: false, error: "Custom Adopt order not found." }, 404);
+  if (order.status !== "Completed" || !order.final_paid ||
+      !String(order.character_name || "").trim() ||
+      !String(order.original_idea_by || "").trim() ||
+      !String(order.final_artwork_path || "").trim()) {
+    return respond({ ok: false, error: "A Completed order with Custom Name, Original Idea By and final artwork is required before registration." }, 409);
+  }
+  return await callTransaction("admin_complete_custom_delivery", body.custom_order_id, "p_custom_order_id");
 }
 
 async function confirmCustomPayment(body: Record<string, unknown>) {
@@ -1181,11 +1221,18 @@ await notifyTelegram(
   "Remaining: <b>$" + escapeTelegramHtml(remaining.toFixed(2)) + " USD</b>",
   "custom_payment_confirmation",
 );
-if (requestedStage !== "initial") {
+if (requestedStage === "final") {
   await notifyTelegram(
-    "✓ <b>Custom payment completed — final artwork pending</b>\n" +
-    "Request: <code>" + escapeTelegramHtml(order.order_code || order.id) + "</code>\n" +
-    "The request is marked Completed. Open its record to add the final artwork and attribution.",
+    "✓ <b>Custom payment completed — final artwork pending</b>\\n" +
+    "Request: <code>" + escapeTelegramHtml(order.order_code || order.id) + "</code>\\n" +
+    "The Split Payment order is marked Completed. Open its record to add the final artwork and attribution.",
+    "custom_payment_confirmation",
+  );
+} else if (requestedStage === "full") {
+  await notifyTelegram(
+    "✓ <b>Custom 100% payment confirmed</b>\\n" +
+    "Request: <code>" + escapeTelegramHtml(order.order_code || order.id) + "</code>\\n" +
+    "The order is In Progress. Confirm delivery separately to mark it Completed.",
     "custom_payment_confirmation",
   );
 }
@@ -1632,12 +1679,11 @@ String(body.request_id ?? ""),
 "p_request_id",
 );
 
+case "confirm-custom-delivery":
+return await confirmCustomDelivery(body);
+
 case "complete-custom-delivery":
-return await callTransaction(
-"admin_complete_custom_delivery",
-String(body.custom_order_id ?? ""),
-"p_custom_order_id",
-);
+return await registerCustomDelivery(body);
 
 case "review-certificate":
 return await reviewCertificate(body);
