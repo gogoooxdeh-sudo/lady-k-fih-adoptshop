@@ -1110,7 +1110,7 @@ return respond({ ok: false, error: "This order is not eligible for a full paymen
 return respond({ ok: false, error: "This order uses the Full Payment plan." }, 409);
 } else if (requestedStage === "initial" && order.initial_paid) {
 return respond({ ok: true, already_confirmed: true });
-} else if (requestedStage === "final" && (!order.initial_paid || !order.final_approved || order.final_paid)) {
+} else if (requestedStage === "final" && (!order.initial_paid || order.final_paid)) {
 return respond({ ok: false, error: "Confirm the initial 60% and record final design approval before confirming the final 40%." }, 409);
 }
 
