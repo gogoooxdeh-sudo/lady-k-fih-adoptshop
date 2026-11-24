@@ -857,6 +857,29 @@ $('#admin-save-notification-preferences').addEventListener('click',async()=>{
  }catch(error){toast(error?.message||'Notification preferences could not be saved.',true)}
  finally{button.disabled=false;button.textContent='Save Notification Preferences'}
 });
+$('#admin-restore-store-data')?.addEventListener('click',async()=>{
+ const button=$('#admin-restore-store-data'),status=$('#admin-restore-status');
+ if(!button||button.disabled)return;
+ const phrase=window.prompt('This permanently erases all AdoptShop listings, sales, Custom Orders, customers, payments, certificates, ownership records, activity history and uploaded files.\n\nTo continue, type RESET STORE exactly:');
+ if(phrase!=='RESET STORE'){if(phrase!==null)toast('Reset cancelled: confirmation phrase did not match.',true);return}
+ if(!window.confirm('FINAL WARNING: this cannot be undone. All adoptables, archives, requests, custom records and associated files will be permanently deleted. Your admin access and store preferences will remain. Continue?'))return;
+ button.disabled=true;button.textContent='Restoring…';if(status)status.textContent='Removing records and uploaded files. Please keep this page open.';
+ try{
+  const result=await window.LKFBackend.admin('restore-store-data',{confirmation:'RESET STORE'});
+  await loadAdminData();
+  await loadPublicCatalog();
+  renderAll();
+  adminGo('dashboard');
+  const removed=Object.values(result.deleted||{}).reduce((sum,value)=>sum+Number(value||0),0);
+  const stored=Object.values(result.storage||{}).reduce((sum,value)=>sum+Number(value||0),0);
+  if(status)status.textContent='Page restored. '+removed+' database records and '+stored+' stored files removed. Admin access and settings were preserved.';
+  toast('AdoptShop has been restored to a clean state.',true);
+ }catch(error){
+  console.error('[Lady K ★ Fih] Store reset failed:',error);
+  if(status)status.textContent='Reset could not be completed: '+(error?.message||'Unknown error')+'. Check the records before trying again.';
+  toast(error?.message||'The page could not be fully restored.',true);
+ }finally{button.disabled=false;button.textContent='Restore Page'}
+});
 $('#certificate-select').addEventListener('change',()=>{certificateSelection=$('#certificate-select').value;$('#certificate-area').innerHTML='';const ok=!!getCertificate();$('#certificate-preview').disabled=!ok;$('#certificate-download').disabled=!ok});$('#certificate-preview').addEventListener('click',showCertificate);$('#certificate-download').addEventListener('click',()=>printCertificate());$('#certificate-local-download').addEventListener('click',()=>downloadCertificate());$('#custom-certificate-select').addEventListener('change',()=>{$('#custom-certificate-area').innerHTML='';const ok=!!getCertificate($('#custom-certificate-select').value);$('#custom-certificate-preview').disabled=!ok;$('#custom-certificate-download').disabled=!ok});$('#custom-certificate-preview').addEventListener('click',showCustomCertificate);$('#custom-certificate-download').addEventListener('click',printCustomCertificate);$('#custom-certificate-local-download').addEventListener('click',()=>downloadCertificate($('#custom-certificate-select').value));window.addEventListener('popstate',()=>{const p=location.hash.slice(1).split('#')[0];if(['home','available','details','custom','archive','custom-archive','information','contact'].includes(p)&&p!==currentPage){goPage(p,{historyPush:false});if(p==='details'){const a=adopts.find(x=>x.id===currentAdoptId&&x.status!=='Hidden')||adopts.find(x=>x.status==='Available');if(a){currentAdoptId=a.id;renderDetail(a)}}}});window.addEventListener('keydown',e=>{if(e.key==='Escape'){document.querySelector('.modal-backdrop')?.remove();$('#public-nav').classList.remove('open');$('#admin-sidebar').classList.remove('open')}});
 $('#year').textContent=new Date().getFullYear();const initialPage=location.hash.slice(1).split('#')[0]||'home';goPage(initialPage==='details'?'home':initialPage,{historyPush:false,scroll:false});renderAll();
 })();
