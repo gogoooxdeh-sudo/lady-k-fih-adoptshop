@@ -578,18 +578,22 @@ async function deleteRecord(body: Record<string, unknown>) {
   const result = (Array.isArray(data) ? data[0] : data) as Record<string, unknown> | null;
   if (!result?.ok) return respond({ ok: false, error: "The record could not be deleted." }, 409);
   const cleanupErrors: string[] = [];
-  const remove = async (bucket: string, paths: unknown[]) => {
-    const valid = [...new Set(paths.filter((p): p is string => typeof p === "string" && p.length > 0 && !p.includes("..")))];
-    if (!valid.length) return;
-    const { error: storageError } = await supabase.storage.from(bucket).remove(valid);
+  const remove = async (bucket: string, paths: unknown[], allowedPrefix: string) => {
+    const supplied = [...new Set(paths.filter((p): p is string => typeof p === "string" && p.length > 0))];
+    const candidates = supplied.filter((path) =>
+      path.startsWith(allowedPrefix) && !path.includes("..") && path.length <= 500
+    );
+    if (candidates.length !== supplied.length) cleanupErrors.push(bucket + ": some returned paths were outside the expected folder and were not removed");
+    if (!candidates.length) return;
+    const { error: storageError } = await supabase.storage.from(bucket).remove(candidates);
     if (storageError) cleanupErrors.push(bucket + ": " + storageError.message);
   };
   if (kind === "adopt") {
-    await remove("adoptables", Array.isArray(result.storage_paths) ? result.storage_paths : []);
+    await remove("adoptables", Array.isArray(result.storage_paths) ? result.storage_paths : [], "adopts/" + id + "/");
   } else {
-    await remove("custom-references", Array.isArray(result.reference_paths) ? result.reference_paths : []);
+    await remove("custom-references", Array.isArray(result.reference_paths) ? result.reference_paths : [], "custom-requests/");
     if (typeof result.final_artwork_path === "string" && result.final_artwork_path) {
-      await remove("private-deliveries", [result.final_artwork_path]);
+      await remove("private-deliveries", [result.final_artwork_path], "custom-orders/" + id + "/final/");
     }
   }
   return respond({ ok: true, deleted: true, cleanup_warning: cleanupErrors.length ? cleanupErrors.join("; ") : null });
@@ -1041,12 +1045,12 @@ return respond({ ok: false, error: "Choose an image up to 20 MB." }, 400);
 }
 const { data: order, error: orderError } = await supabase
 .from("custom_orders")
-.select("id, final_paid")
+.select("id, final_paid, status")
 .eq("id", body.custom_order_id)
 .maybeSingle();
 if (orderError) return respond({ ok: false, error: orderError.message }, 400);
 if (!order) return respond({ ok: false, error: "Custom Adopt order not found." }, 404);
-if (!order.final_paid) return respond({ ok: false, error: "Confirm the full payment before uploading final Custom artwork." }, 409);
+if (!order.final_paid || order.status !== "Completed") return respond({ ok: false, error: "Confirm the required payment and delivery first. Final artwork can only be uploaded after the order is Completed." }, 409);
 const extension = filename.includes(".") ? filename.split(".").pop()!.toLowerCase().replace(/[^a-z0-9]/g, "").slice(0, 8) : "img";
 const storagePath = "custom-orders/" + String(body.custom_order_id) + "/final/" + crypto.randomUUID() + "." + (extension || "img");
 const { data, error } = await supabase.storage
@@ -1077,6 +1081,46 @@ async function cleanupFinalArtworkUpload(body: Record<string, unknown>) {
   return respond({ ok: true, removed_count: 1 });
 }
 
+async function confirmCustomDelivery(body: Record<string, unknown>) {
+  if (!validUuid(body.custom_order_id)) return respond({ ok: false, error: "Invalid Custom Adopt order ID." }, 400);
+  const { data: order, error } = await supabase.from("custom_orders")
+    .select("id, order_code, payment_plan, final_paid, status")
+    .eq("id", body.custom_order_id).maybeSingle();
+  if (error) return respond({ ok: false, error: error.message }, 400);
+  if (!order) return respond({ ok: false, error: "Custom Adopt order not found." }, 404);
+  if (order.payment_plan !== "full" || !order.final_paid || !["In Progress", "Awaiting Delivery"].includes(order.status)) {
+    return respond({ ok: false, error: "Only a fully paid Full Payment order in progress can have delivery confirmed." }, 409);
+  }
+  const { data, error: rpcError } = await supabase.rpc("admin_confirm_custom_delivery", {
+    p_custom_order_id: body.custom_order_id,
+  });
+  if (rpcError) return respond({ ok: false, error: rpcError.message }, 409);
+  if (!data?.ok) return respond({ ok: false, error: "Delivery confirmation was not completed." }, 409);
+  await notifyTelegram(
+    "✓ <b>Custom delivery confirmed</b>\\n" +
+    "Request: <code>" + escapeTelegramHtml(order.order_code || order.id) + "</code>\\n" +
+    "The order is Completed. Final artwork registration is now available.",
+    "delivery_complete",
+  );
+  return respond({ ok: true, data });
+}
+
+async function registerCustomDelivery(body: Record<string, unknown>) {
+  if (!validUuid(body.custom_order_id)) return respond({ ok: false, error: "Invalid Custom Adopt order ID." }, 400);
+  const { data: order, error } = await supabase.from("custom_orders")
+    .select("id, status, final_paid, character_name, original_idea_by, final_artwork_path")
+    .eq("id", body.custom_order_id).maybeSingle();
+  if (error) return respond({ ok: false, error: error.message }, 400);
+  if (!order) return respond({ ok: false, error: "Custom Adopt order not found." }, 404);
+  if (order.status !== "Completed" || !order.final_paid ||
+      !String(order.character_name || "").trim() ||
+      !String(order.original_idea_by || "").trim() ||
+      !String(order.final_artwork_path || "").trim()) {
+    return respond({ ok: false, error: "A Completed order with Custom Name, Original Idea By and final artwork is required before registration." }, 409);
+  }
+  return await callTransaction("admin_complete_custom_delivery", body.custom_order_id, "p_custom_order_id");
+}
+
 async function confirmCustomPayment(body: Record<string, unknown>) {
 if (!validUuid(body.custom_order_id)) {
 return respond({ ok: false, error: "Invalid Custom Adopt order ID." }, 400);
@@ -1099,8 +1143,8 @@ if (orderError) return respond({ ok: false, error: orderError.message }, 400);
 if (!order) return respond({ ok: false, error: "Custom Adopt order not found." }, 404);
 
 const total = Number(order.agreed_total ?? (Number(order.quote_base || 0) + Number(order.license_fee || 0)));
-if (!Number.isFinite(total) || total <= 0 || !order.quote_sent || !order.client_approved_quote) {
-return respond({ ok: false, error: "A valid quotation must be sent and approved before payment confirmation." }, 409);
+if (!Number.isFinite(total) || total <= 0) {
+return respond({ ok: false, error: "Set and save a valid agreed total before confirming payment." }, 409);
 }
 if (requestedStage === "full") {
 if (order.payment_plan !== "full" || order.initial_paid || order.final_paid) {
@@ -1111,13 +1155,13 @@ return respond({ ok: false, error: "This order uses the Full Payment plan." }, 4
 } else if (requestedStage === "initial" && order.initial_paid) {
 return respond({ ok: true, already_confirmed: true });
 } else if (requestedStage === "final" && (!order.initial_paid || order.final_paid)) {
-return respond({ ok: false, error: "Confirm the initial 60% and record final design approval before confirming the final 40%." }, 409);
+return respond({ ok: false, error: "Confirm the initial 60% first, then confirm the remaining 40%." }, 409);
 }
 
 const amount = Number((total * selected.fraction).toFixed(2));
 const { data: existing, error: existingError } = await supabase
 .from("payments")
-.select("id, status")
+.select("id, status, amount")
 .eq("custom_order_id", order.id)
 .eq("stage", selected.label)
 .order("created_at", { ascending: false })
@@ -1158,6 +1202,15 @@ paymentId = raced.id;
 paymentId = payment.id;
 }
 }
+const paymentMethod = typeof body.payment_method === "string"
+? body.payment_method.trim().slice(0, 100)
+: "Manual verification";
+const { error: pendingUpdateError } = await supabase.from("payments")
+.update({ amount, currency: "USD", payment_method: paymentMethod })
+.eq("id", paymentId)
+.eq("status", "Pending");
+if (pendingUpdateError) return respond({ ok: false, error: pendingUpdateError.message }, 400);
+
 const { data: confirmation, error: confirmationError } = await supabase.rpc(
 selected.rpc,
 { p_payment_id: paymentId },
@@ -1181,11 +1234,18 @@ await notifyTelegram(
   "Remaining: <b>$" + escapeTelegramHtml(remaining.toFixed(2)) + " USD</b>",
   "custom_payment_confirmation",
 );
-if (requestedStage !== "initial") {
+if (requestedStage === "final") {
   await notifyTelegram(
-    "✓ <b>Custom payment completed — final artwork pending</b>\n" +
-    "Request: <code>" + escapeTelegramHtml(order.order_code || order.id) + "</code>\n" +
-    "The request is marked Completed. Open its record to add the final artwork and attribution.",
+    "✓ <b>Custom payment completed — final artwork pending</b>\\n" +
+    "Request: <code>" + escapeTelegramHtml(order.order_code || order.id) + "</code>\\n" +
+    "The Split Payment order is marked Completed. Open its record to add the final artwork and attribution.",
+    "custom_payment_confirmation",
+  );
+} else if (requestedStage === "full") {
+  await notifyTelegram(
+    "✓ <b>Custom 100% payment confirmed</b>\\n" +
+    "Request: <code>" + escapeTelegramHtml(order.order_code || order.id) + "</code>\\n" +
+    "The order is In Progress. Confirm delivery separately to mark it Completed.",
     "custom_payment_confirmation",
   );
 }
@@ -1327,8 +1387,20 @@ const { data: current, error: currentError } = await supabase
 .maybeSingle();
 if (currentError) return respond({ ok: false, error: currentError.message }, 400);
 if (!current) return respond({ ok: false, error: "Custom order not found." }, 404);
-if ((current.initial_paid || current.final_paid) && ["Rejected", "Cancelled"].includes(String(values.status || ""))) {
-return respond({ ok: false, error: "A paid Custom Adopt cannot be rejected or cancelled." }, 409);
+if ("status" in values && (current.initial_paid || current.final_paid)) {
+  const requestedStatus = String(values.status);
+  let allowedPaidStatuses: string[] = [];
+  if (current.payment_plan === "full" && current.final_paid) {
+    allowedPaidStatuses = current.status === "In Progress"
+      ? ["In Progress", "Awaiting Delivery", "Ready for Delivery"]
+      : current.status === "Awaiting Delivery" || current.status === "Ready for Delivery"
+        ? ["Awaiting Delivery", "Ready for Delivery"] : [];
+  } else if (current.payment_plan === "split" && current.initial_paid && !current.final_paid) {
+    allowedPaidStatuses = ["In Progress", "Awaiting Final Payment"];
+  }
+  if (!allowedPaidStatuses.includes(requestedStatus)) {
+    return respond({ ok: false, error: "A paid Custom order cannot be moved backwards or cancelled. Use the payment and delivery workflow to advance it." }, 409);
+  }
 }
 if (current.status === "Completed") {
   const allowedPostPaymentFields = new Set(["character_name", "original_idea_by", "final_artwork_path", "metadata", "preview_presented", "final_approved"]);
@@ -1503,7 +1575,7 @@ if (rpcName === "admin_complete_purchase_delivery") {
       "✦ <b>Final Custom artwork registered</b>\nRequest: <code>" +
       escapeTelegramHtml(order?.order_code || id) + "</code>\nCharacter: " +
       escapeTelegramHtml(order?.character_name || "Custom character") +
-      "\nCertificate created for artist review. Customer delivery is still a separate action.",
+      "\nDelivery was already manually confirmed. Final artwork and certificate are registered for artist review.",
       "custom_delivery_complete",
     );
   }
@@ -1632,12 +1704,11 @@ String(body.request_id ?? ""),
 "p_request_id",
 );
 
+case "confirm-custom-delivery":
+return await confirmCustomDelivery(body);
+
 case "complete-custom-delivery":
-return await callTransaction(
-"admin_complete_custom_delivery",
-String(body.custom_order_id ?? ""),
-"p_custom_order_id",
-);
+return await registerCustomDelivery(body);
 
 case "review-certificate":
 return await reviewCertificate(body);
