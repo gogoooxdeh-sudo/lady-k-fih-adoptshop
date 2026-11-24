@@ -1099,8 +1099,8 @@ if (orderError) return respond({ ok: false, error: orderError.message }, 400);
 if (!order) return respond({ ok: false, error: "Custom Adopt order not found." }, 404);
 
 const total = Number(order.agreed_total ?? (Number(order.quote_base || 0) + Number(order.license_fee || 0)));
-if (!Number.isFinite(total) || total <= 0 || !order.quote_sent || !order.client_approved_quote) {
-return respond({ ok: false, error: "A valid quotation must be sent and approved before payment confirmation." }, 409);
+if (!Number.isFinite(total) || total <= 0) {
+return respond({ ok: false, error: "Set and save a valid agreed total before confirming payment." }, 409);
 }
 if (requestedStage === "full") {
 if (order.payment_plan !== "full" || order.initial_paid || order.final_paid) {
@@ -1111,7 +1111,7 @@ return respond({ ok: false, error: "This order uses the Full Payment plan." }, 4
 } else if (requestedStage === "initial" && order.initial_paid) {
 return respond({ ok: true, already_confirmed: true });
 } else if (requestedStage === "final" && (!order.initial_paid || order.final_paid)) {
-return respond({ ok: false, error: "Confirm the initial 60% and record final design approval before confirming the final 40%." }, 409);
+return respond({ ok: false, error: "Confirm the initial 60% first, then confirm the remaining 40%." }, 409);
 }
 
 const amount = Number((total * selected.fraction).toFixed(2));
