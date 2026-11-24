@@ -551,7 +551,7 @@ async function customAction(id,act,nextValue=null){const r=customRequests.find(x
  const hasConfirmedPayment=!!(r.fullPaid||r.initialPaid||r.finalPaid);
  if(hasConfirmedPayment){
   if(r.paymentPlan==='full'&&r.fullPaid&&!['In Progress','Ready for Delivery','Completed'].includes(nextValue)){toast('A fully paid Custom cannot return to request or payment review.',true);return}
-  if(r.paymentPlan==='full'&&r.fullPaid&&r.status==='Awaiting Delivery'&&nextValue==='In Progress'){toast('A Custom already awaiting delivery cannot be moved back to In Progress.',true);return}
+  if(r.paymentPlan==='full'&&r.fullPaid&&['Awaiting Delivery','Ready for Delivery'].includes(r.status)&&nextValue==='In Progress'){toast('A Custom already awaiting delivery cannot be moved back to In Progress.',true);return}
   if(r.paymentPlan!=='full'&&r.initialPaid&&!r.finalPaid&& !['In Progress','Awaiting Payment'].includes(nextValue)){toast('A Split Payment order with its initial 60% confirmed cannot return to request review or be cancelled.',true);return}
   if(r.paymentPlan!=='full'&&r.finalPaid&&nextValue!=='Completed'){toast('A Custom with its final 40% confirmed cannot be moved out of Completed.',true);return}
  }
