@@ -54,7 +54,7 @@ BEGIN
   IF v_order.status='Completed' AND v_order.payment_plan='full' AND v_order.final_paid THEN
     RETURN jsonb_build_object('ok',true,'already_confirmed',true,'custom_order_id',p_custom_order_id,'status','Completed');
   END IF;
-  IF v_order.payment_plan IS DISTINCT FROM 'full' OR NOT v_order.final_paid OR v_order.status<>'In Progress' THEN
+  IF v_order.payment_plan IS DISTINCT FROM 'full' OR NOT v_order.final_paid OR v_order.status NOT IN ('In Progress','Awaiting Delivery') THEN
     RAISE EXCEPTION 'Only a fully paid Full Payment order in progress can have delivery confirmed';
   END IF;
   UPDATE public.custom_orders SET status='Completed',updated_at=v_now WHERE id=p_custom_order_id;
