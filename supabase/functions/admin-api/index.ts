@@ -578,18 +578,21 @@ async function deleteRecord(body: Record<string, unknown>) {
   const result = (Array.isArray(data) ? data[0] : data) as Record<string, unknown> | null;
   if (!result?.ok) return respond({ ok: false, error: "The record could not be deleted." }, 409);
   const cleanupErrors: string[] = [];
-  const remove = async (bucket: string, paths: unknown[]) => {
-    const valid = [...new Set(paths.filter((p): p is string => typeof p === "string" && p.length > 0 && !p.includes("..")))];
-    if (!valid.length) return;
-    const { error: storageError } = await supabase.storage.from(bucket).remove(valid);
+  const remove = async (bucket: string, paths: unknown[], allowedPrefix: string) => {
+    const candidates = [...new Set(paths.filter((p): p is string =>
+      typeof p === "string" && p.length > 0 && p.startsWith(allowedPrefix) && !p.includes("..") && p.length <= 500
+    ))];
+    if (!candidates.length) return;
+    const { error: storageError } = await supabase.storage.from(bucket).remove(candidates);
     if (storageError) cleanupErrors.push(bucket + ": " + storageError.message);
+    if (candidates.length !== paths.length) cleanupErrors.push(bucket + ": some returned paths were outside the expected folder and were not removed");
   };
   if (kind === "adopt") {
-    await remove("adoptables", Array.isArray(result.storage_paths) ? result.storage_paths : []);
+    await remove("adoptables", Array.isArray(result.storage_paths) ? result.storage_paths : [], "adopts/" + id + "/");
   } else {
-    await remove("custom-references", Array.isArray(result.reference_paths) ? result.reference_paths : []);
+    await remove("custom-references", Array.isArray(result.reference_paths) ? result.reference_paths : [], "custom-requests/");
     if (typeof result.final_artwork_path === "string" && result.final_artwork_path) {
-      await remove("private-deliveries", [result.final_artwork_path]);
+      await remove("private-deliveries", [result.final_artwork_path], "custom-orders/" + id + "/final/");
     }
   }
   return respond({ ok: true, deleted: true, cleanup_warning: cleanupErrors.length ? cleanupErrors.join("; ") : null });
