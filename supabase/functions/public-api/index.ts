@@ -120,15 +120,15 @@ Deno.serve(async (req) => {
       ? String(visibilityRow?.setting_value)
       : "Temporarily Closed";
 
-    if (action !== "catalog") {
     const fullName = String(payload.full_name || "").trim();
     const email = String(payload.email || "").trim();
     const discord = String(payload.discord || "").trim();
-    if (!fullName || fullName.length > 160 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ||
-        email.length > 254 || !discord || discord.length > 100 || payload.terms_accepted !== true) {
-      return json({ ok: false, error: "Check the required contact details and accept the Terms of Service." }, 400);
-    }
 
+    if (action !== "catalog") {
+      if (!fullName || fullName.length > 160 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ||
+          email.length > 254 || !discord || discord.length > 100 || payload.terms_accepted !== true) {
+        return json({ ok: false, error: "Check the required contact details and accept the Terms of Service." }, 400);
+      }
     }
 
     if (action === "catalog") {
