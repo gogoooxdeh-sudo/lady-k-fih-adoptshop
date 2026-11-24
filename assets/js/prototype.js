@@ -29,6 +29,33 @@ function renderPublic(){const banner=$('#store-status-banner');if(banner){const 
 // The microtask still runs if a subsequent synchronous admin setup step throws.
 queueMicrotask(()=>{loadPublicCatalog()});
 
+// Independent early dispatcher for PUBLIC storefront navigation only.
+// Admin navigation is intentionally left to its existing, working handler.
+window.addEventListener('click',e=>{
+ const target=e.target instanceof Element?e.target:e.target?.parentElement;
+ if(!target)return;
+ const nav=target.closest('a[href^="#"]');
+ if(nav){
+  const dest=nav.getAttribute('href').slice(1).split('#')[0];
+  if(['home','available','custom','archive','custom-archive','information','contact'].includes(dest)){
+   e.preventDefault();e.stopImmediatePropagation();goPage(dest);
+   const anchor=nav.getAttribute('href').split('#')[2];
+   if(anchor)setTimeout(()=>document.getElementById(anchor)?.scrollIntoView({behavior:'smooth'}),100);
+   return;
+  }
+ }
+ const detail=target.closest('[data-open-detail]');
+ if(detail){e.preventDefault();e.stopImmediatePropagation();showDetail(detail.dataset.openDetail);return}
+ const buy=target.closest('[data-buy]');
+ if(buy){e.preventDefault();e.stopImmediatePropagation();openPurchase(buy.dataset.buy);return}
+ const homeCategory=target.closest('[data-home-category]');
+ if(homeCategory){e.preventDefault();e.stopImmediatePropagation();activeCategory=homeCategory.dataset.homeCategory;refreshCategories();goPage('available');renderCatalog();return}
+ const category=target.closest('[data-category]');
+ if(category){e.preventDefault();e.stopImmediatePropagation();activeCategory=category.dataset.category;refreshCategories();renderCatalog();return}
+ const scroll=target.closest('[data-scroll]');
+ if(scroll){e.preventDefault();e.stopImmediatePropagation();$('#featured-carousel').scrollBy({left:(scroll.dataset.scroll==='left'?-1:1)*Math.max(230,$('#featured-carousel').clientWidth*.8),behavior:'smooth'});return}
+},true);
+
 async function loadAdminData({render=true}={}){
  if(!window.LKFBackend?.ready)throw new Error('Supabase client is unavailable.');
  const resources=['adopts','adopt_images','customers','purchase_requests','custom_orders','custom_reference_files','payments','ownership_records','certificates','custom_order_updates','activity_log','shop_settings'];
