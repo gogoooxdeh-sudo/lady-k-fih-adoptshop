@@ -299,7 +299,8 @@ function openAdoptForm(a=null){
   e.target.value='';mainImage=Math.min(mainImage,Math.max(images.length-1,0));renderImageEditor();
  });
  function renderImageEditor(){
-  const el=back.querySelector('#adopt-image-editor');
+  const el=back.isConnected?back.querySelector('#adopt-image-editor'):null;
+  if(!el)return;
   el.innerHTML=images.length?images.map((im,i)=>`<div class="art-editor-card"><img src="${esc(im.url||'')}" alt="${esc(im.name||'Artwork')}"><label><input type="radio" name="main-image" value="${i}" ${i===mainImage?'checked':''}> Main image</label><span>${esc(im.name||'Artwork')}</span><button type="button" data-remove-image="${i}">Remove</button></div>`).join(''):'<p class="fine">No artwork uploaded. A labelled placeholder will be shown until artwork is added.</p>';
   el.querySelectorAll('[data-remove-image]').forEach(b=>b.onclick=()=>{const removed=Number(b.dataset.removeImage),im=images[removed];if(im?.objectUrl)URL.revokeObjectURL(im.url);images.splice(removed,1);if(removed<mainImage)mainImage--;else if(removed===mainImage)mainImage=Math.max(0,mainImage-1);mainImage=Math.min(mainImage,Math.max(images.length-1,0));renderImageEditor()});
   el.querySelectorAll('[name="main-image"]').forEach(r=>r.onchange=()=>{mainImage=Number(r.value)});
@@ -313,8 +314,10 @@ function openAdoptForm(a=null){
   if(!Number.isFinite(price)||price<0)errors.push('Enter a valid non-negative price.');
   if(!persistedId&&adopts.some(y=>y.id.toLowerCase()===id.toLowerCase()))errors.push('Adopt ID must be unique.');
   if(images.length>30)errors.push('A maximum of 30 artwork images is allowed.');
-  back.querySelector('#adopt-form-errors').innerHTML=errorBox(errors);if(errors.length)return;
-  if(!window.LKFBackend?.ready){back.querySelector('#adopt-form-errors').innerHTML=errorBox(['The secure inventory service is unavailable.']);return}
+  const formErrors=back.isConnected?back.querySelector('#adopt-form-errors'):null;
+  if(!formErrors)return;
+  formErrors.innerHTML=errorBox(errors);if(errors.length)return;
+  if(!window.LKFBackend?.ready){formErrors.innerHTML=errorBox(['The secure inventory service is unavailable.']);return}
   const button=back.querySelector('#adopt-save-button');button.disabled=true;button.textContent='Saving securely…';
   let uploadedForCommit=[];imagesCommitted=false;
   try{
