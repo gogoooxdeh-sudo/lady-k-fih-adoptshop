@@ -1,7 +1,8 @@
 -- Custom payment completion and final-artwork registration are separate stages.
 ALTER TABLE public.custom_orders
   ADD COLUMN IF NOT EXISTS original_idea_by text,
-  ADD COLUMN IF NOT EXISTS final_artwork_saved_at timestamptz;
+  ADD COLUMN IF NOT EXISTS final_artwork_saved_at timestamptz,
+  ADD COLUMN IF NOT EXISTS public_archive_visible boolean NOT NULL DEFAULT true;
 
 CREATE OR REPLACE FUNCTION public.admin_confirm_custom_full_payment(p_payment_id uuid)
 RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER
@@ -124,3 +125,52 @@ REVOKE ALL ON FUNCTION public.admin_confirm_custom_full_payment(uuid) FROM PUBLI
 GRANT EXECUTE ON FUNCTION public.admin_confirm_custom_full_payment(uuid) TO service_role;
 REVOKE ALL ON FUNCTION public.admin_complete_custom_delivery(uuid) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.admin_complete_custom_delivery(uuid) TO service_role;
+
+-- Individual deletion is restricted to records with no financial or ownership history.
+CREATE OR REPLACE FUNCTION public.admin_delete_adopt(p_adopt_id uuid)
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER
+SET search_path TO 'pg_catalog', 'public'
+AS $function$
+DECLARE v_paths jsonb;
+BEGIN
+  PERFORM 1 FROM public.adopts WHERE id=p_adopt_id FOR UPDATE;
+  IF NOT FOUND THEN RAISE EXCEPTION 'Adoptable not found'; END IF;
+  IF EXISTS (SELECT 1 FROM public.purchase_requests WHERE adopt_id=p_adopt_id)
+     OR EXISTS (SELECT 1 FROM public.ownership_records WHERE adopt_id=p_adopt_id) THEN
+    RAISE EXCEPTION 'This Adopt has linked request or ownership history. Keep the record and hide it from public instead.';
+  END IF;
+  SELECT COALESCE(jsonb_agg(storage_path), '[]'::jsonb) INTO v_paths
+    FROM public.adopt_images WHERE adopt_id=p_adopt_id AND storage_path IS NOT NULL;
+  DELETE FROM public.adopt_images WHERE adopt_id=p_adopt_id;
+  DELETE FROM public.adopts WHERE id=p_adopt_id;
+  RETURN jsonb_build_object('ok',true,'storage_paths',v_paths);
+END;
+$function$;
+
+CREATE OR REPLACE FUNCTION public.admin_delete_custom_order(p_custom_order_id uuid)
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER
+SET search_path TO 'pg_catalog', 'public'
+AS $function$
+DECLARE v_refs jsonb; v_final_path text;
+BEGIN
+  PERFORM 1 FROM public.custom_orders WHERE id=p_custom_order_id FOR UPDATE;
+  IF NOT FOUND THEN RAISE EXCEPTION 'Custom request not found'; END IF;
+  IF EXISTS (SELECT 1 FROM public.payments WHERE custom_order_id=p_custom_order_id)
+     OR EXISTS (SELECT 1 FROM public.ownership_records WHERE custom_order_id=p_custom_order_id)
+     OR EXISTS (SELECT 1 FROM public.certificates WHERE custom_order_id=p_custom_order_id) THEN
+    RAISE EXCEPTION 'This Custom has payment, ownership or certificate history. It cannot be deleted; hide it from the public archive instead.';
+  END IF;
+  SELECT COALESCE(jsonb_agg(storage_path), '[]'::jsonb) INTO v_refs
+    FROM public.custom_reference_files WHERE custom_order_id=p_custom_order_id AND storage_path IS NOT NULL;
+  SELECT final_artwork_path INTO v_final_path FROM public.custom_orders WHERE id=p_custom_order_id;
+  DELETE FROM public.custom_order_updates WHERE custom_order_id=p_custom_order_id;
+  DELETE FROM public.custom_reference_files WHERE custom_order_id=p_custom_order_id;
+  DELETE FROM public.custom_orders WHERE id=p_custom_order_id;
+  RETURN jsonb_build_object('ok',true,'reference_paths',v_refs,'final_artwork_path',v_final_path);
+END;
+$function$;
+
+REVOKE ALL ON FUNCTION public.admin_delete_adopt(uuid) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.admin_delete_adopt(uuid) TO service_role;
+REVOKE ALL ON FUNCTION public.admin_delete_custom_order(uuid) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.admin_delete_custom_order(uuid) TO service_role;
