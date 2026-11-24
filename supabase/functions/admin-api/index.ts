@@ -1157,7 +1157,7 @@ return respond({ ok: false, error: "Confirm the initial 60% first, then confirm 
 const amount = Number((total * selected.fraction).toFixed(2));
 const { data: existing, error: existingError } = await supabase
 .from("payments")
-.select("id, status")
+.select("id, status, amount")
 .eq("custom_order_id", order.id)
 .eq("stage", selected.label)
 .order("created_at", { ascending: false })
@@ -1198,6 +1198,15 @@ paymentId = raced.id;
 paymentId = payment.id;
 }
 }
+const paymentMethod = typeof body.payment_method === "string"
+? body.payment_method.trim().slice(0, 100)
+: "Manual verification";
+const { error: pendingUpdateError } = await supabase.from("payments")
+.update({ amount, currency: "USD", payment_method: paymentMethod })
+.eq("id", paymentId)
+.eq("status", "Pending");
+if (pendingUpdateError) return respond({ ok: false, error: pendingUpdateError.message }, 400);
+
 const { data: confirmation, error: confirmationError } = await supabase.rpc(
 selected.rpc,
 { p_payment_id: paymentId },
