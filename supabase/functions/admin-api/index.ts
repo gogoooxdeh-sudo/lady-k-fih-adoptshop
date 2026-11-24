@@ -1562,7 +1562,7 @@ if (rpcName === "admin_complete_purchase_delivery") {
       "✦ <b>Final Custom artwork registered</b>\nRequest: <code>" +
       escapeTelegramHtml(order?.order_code || id) + "</code>\nCharacter: " +
       escapeTelegramHtml(order?.character_name || "Custom character") +
-      "\nCertificate created for artist review. Customer delivery is still a separate action.",
+      "\nDelivery was already manually confirmed. Final artwork and certificate are registered for artist review.",
       "custom_delivery_complete",
     );
   }
