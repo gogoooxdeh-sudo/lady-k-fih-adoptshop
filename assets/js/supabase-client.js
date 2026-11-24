@@ -159,6 +159,7 @@
     },
 
     async publicCustomRequest(payload, files = []) {
+      if (!files.length) return await backend.publicRequest('custom', payload);
       const form = new FormData();
       form.append('action', 'custom');
       form.append('payload', JSON.stringify(payload));

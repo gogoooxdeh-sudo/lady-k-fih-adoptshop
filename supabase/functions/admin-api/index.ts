@@ -838,9 +838,6 @@ if (request.paid) return respond({ ok: true, already_confirmed: true });
 if (["Cancelled", "Rejected", "Completed", "Delivered"].includes(request.status)) {
 return respond({ ok: false, error: "This purchase request is closed." }, 409);
 }
-if (request.status !== "Approved" || !request.invoice_sent) {
-return respond({ ok: false, error: "Approve the request and mark the invoice as sent before confirming payment." }, 409);
-}
 const { data: adopt, error: adoptError } = await supabase
 .from("adopts")
 .select("id, name, adopt_code, status")
@@ -1044,7 +1041,7 @@ if (!selected) return respond({ ok: false, error: "Unknown payment stage." }, 40
 
 const { data: order, error: orderError } = await supabase
 .from("custom_orders")
-.select("id, order_code, character_name, quote_base, license_fee, agreed_total, payment_plan, quote_sent, client_approved_quote, initial_paid, final_approved, final_paid, status")
+.select("id, order_code, character_name, final_artwork_path, quote_base, license_fee, agreed_total, payment_plan, quote_sent, client_approved_quote, initial_paid, final_approved, final_paid, status")
 .eq("id", body.custom_order_id)
 .maybeSingle();
 if (orderError) return respond({ ok: false, error: orderError.message }, 400);
@@ -1062,8 +1059,8 @@ return respond({ ok: false, error: "This order is not eligible for a full paymen
 return respond({ ok: false, error: "This order uses the Full Payment plan." }, 409);
 } else if (requestedStage === "initial" && order.initial_paid) {
 return respond({ ok: true, already_confirmed: true });
-} else if (requestedStage === "final" && (!order.initial_paid || !order.final_approved || order.final_paid)) {
-return respond({ ok: false, error: "The final payment requires confirmed initial payment and final design approval." }, 409);
+} else if (requestedStage === "final" && (!order.initial_paid || !order.final_approved || order.final_paid || !order.final_artwork_path || !String(order.character_name || "").trim())) {
+return respond({ ok: false, error: "Before confirming the final 40%, save the finished character name and final artwork and record final approval." }, 409);
 }
 
 const amount = Number((total * selected.fraction).toFixed(2));
@@ -1115,12 +1112,6 @@ selected.rpc,
 { p_payment_id: paymentId },
 );
 if (confirmationError) return respond({ ok: false, error: confirmationError.message }, 400);
-
-const nextStatus = requestedStage === "final" ? "Awaiting Delivery" : "In Progress";
-await supabase.from("custom_orders").update({
-status: nextStatus,
-updated_at: new Date().toISOString(),
-}).eq("id", order.id);
 
 await notifyTelegram(
   "💳 <b>Custom Adopt payment confirmed</b>\n" +

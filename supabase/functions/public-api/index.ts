@@ -19,8 +19,7 @@ function escapeTelegramHtml(value: unknown): string {
   })[char]!);
 }
 
-async function notifyTelegram(message: string, client: any): Promise<void> {
-  const category = message.includes("New Custom Adopt request") ? "custom_request" : "purchase_request";
+async function notifyTelegram(message: string, client: any, category: "custom_request" | "purchase_request"): Promise<void> {
   const { data: preferenceRow, error: preferenceError } = await client
     .from("shop_settings").select("setting_value")
     .eq("setting_key", "telegram_notifications").maybeSingle();
@@ -133,7 +132,7 @@ Deno.serve(async (req) => {
 
     if (action === "catalog") {
       if (storeVisibility === "Hidden from Public") {
-        return json({ ok: true, adopts: [], storeVisibility });
+        return json({ ok: true, adopts: [], customArchive: [], storeVisibility });
       }
       const { data: rows, error: catalogError } = await supabase
         .from("adopts")
@@ -179,7 +178,21 @@ Deno.serve(async (req) => {
           featured: !!row.featured, images, mainImage: Math.max(0, images.findIndex((x) => x.isMain)),
         });
       }
-      return json({ ok: true, adopts: items, storeVisibility });
+      const { data: completedCustoms, error: customArchiveError } = await supabase
+        .from("custom_orders")
+        .select("order_code, character_name, category, final_artwork_path, delivery_at, created_at")
+        .eq("status", "Completed")
+        .not("final_artwork_path", "is", null)
+        .order("delivery_at", { ascending: false, nullsFirst: false });
+      if (customArchiveError) throw customArchiveError;
+      const customArchive = [];
+      for (const order of completedCustoms || []) {
+        if (!order.final_artwork_path) continue;
+        const { data: signed, error: signError } = await supabase.storage.from("private-deliveries").createSignedUrl(order.final_artwork_path, 86400);
+        if (signError || !signed?.signedUrl) continue;
+        customArchive.push({ id: order.order_code, name: order.character_name || "Custom character", category: order.category || "Custom design", imageUrl: signed.signedUrl, completedAt: order.delivery_at || order.created_at });
+      }
+      return json({ ok: true, adopts: items, customArchive, storeVisibility });
     }
 
     if ((action === "purchase" || action === "custom") && storeVisibility !== "Public") {
@@ -233,6 +246,7 @@ Deno.serve(async (req) => {
         "Adopt: " + escapeTelegramHtml(adoptCode) + "\n" +
         "License: " + escapeTelegramHtml(license),
         supabase,
+        "purchase_request",
       );
       return json({ ok: true, request: data });
     }
@@ -288,6 +302,7 @@ Deno.serve(async (req) => {
         if (stored.length) await supabase.storage.from("custom-references").remove(stored.map((f) => String(f.storage_path)));
         throw uploadError;
       }
+      console.info("[public-api] Creating Custom request; reference count:", stored.length);
       const { data, error } = await supabase.rpc("public_create_custom_order", {
         p_payload: {
           ...payload, full_name: fullName, email, discord,
@@ -300,12 +315,14 @@ Deno.serve(async (req) => {
         throw error;
       }
       const request = data && typeof data === "object" ? data as Record<string, unknown> : {};
+      console.info("[public-api] Custom request saved:", request.order_code || "record created");
       await notifyTelegram(
         "✦ <b>New Custom Adopt request</b>\n" +
         "Order: <code>" + escapeTelegramHtml(request.order_code || "New order") + "</code>\n" +
         "Character: " + escapeTelegramHtml(payload.character_name || "Not specified") + "\n" +
         "License: " + escapeTelegramHtml(license),
         supabase,
+        "custom_request",
       );
       return json({ ok: true, request: data });
     }

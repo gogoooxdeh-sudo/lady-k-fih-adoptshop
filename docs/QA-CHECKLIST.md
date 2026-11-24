@@ -2,7 +2,7 @@
 
 ## Environment safety
 
-- Production storefront visibility is currently **Temporarily Closed**.
+- Production storefront visibility is currently **Public** (verified from `shop_settings`).
 - The owner requires **US$0 in additional service costs**. Do not create a paid Supabase development branch or enable paid features.
 - Do not create test customers, adopts, purchase requests, Custom Adopts, payments, ownership records or certificates in the production database without the owner's explicit approval for a controlled test.
 - The Netlify site may be connected to the production Supabase project. Treat any deployed preview as production-connected unless its backend configuration is independently verified.
@@ -75,7 +75,8 @@
 - [ ] Approval, invoice-sent and payment-pending actions persist after reload.
 - [ ] Rejected/cancelled requests cannot be reopened through ordinary status edits.
 - [ ] Invoice-sent and payment-pending confirmations cannot be reversed; paid request history is locked.
-- [ ] Payment cannot be confirmed before approval and invoice-sent.
+- [ ] Payment can be confirmed directly for an active Reserved request without approval or invoice-sent prerequisites.
+- [ ] Confirming payment immediately marks the Adopt Sold and sets it visible in Sold Archive; it does not mark delivery completed.
 - [ ] Confirmed amount equals the request total.
 - [ ] Duplicate payment confirmation does not create another payment.
 - [ ] Unpaid request can be returned to shop and retains history.
@@ -85,10 +86,12 @@
 - [ ] Paid request cannot be cancelled or returned to shop.
 - [ ] Manual sale records buyer, license, actual amount, method and ToS acceptance.
 - [ ] Manual sale appears in Sold Archive and can proceed to delivery.
-- [ ] Delivery creates ownership and a pending-review certificate exactly once.
+- [ ] A separate actual-delivery action creates ownership and a pending-review certificate exactly once.
 
 ### Custom Adopt
 - [ ] Public request stores the server-set US$37 base and server-calculated license fee.
+- [ ] Submitting with no reference images uses the JSON request path; submissions with references retain the secure multipart upload path.
+- [ ] The customer sees a request-received confirmation with the Custom order number, and the existing Telegram bot receives the Custom request alert.
 - [ ] 8 images at or below 5 MB each are accepted.
 - [ ] 9 images, non-image files and files over 5 MB are rejected.
 - [ ] Failed uploads clean up previously uploaded references.
@@ -99,13 +102,17 @@
 - [ ] Unpaid quote changes reset quote-sent and client-approval flags.
 - [ ] Full-payment plan accepts only one 100% payment.
 - [ ] Split plan accepts 60% initial payment and 40% final payment only after final approval.
+- [ ] Final 40% confirmation also records delivery, creates ownership/certificate records once, and moves the order into Customs Archive; final artwork and character name are required.
+- [ ] Full Payment 100% confirmation does not imply delivery; completion remains separate until the work is finished.
 - [ ] Duplicate payment confirmation is blocked.
 - [ ] Preview cannot be recorded before payment.
 - [ ] Final approval cannot be recorded before preview presentation.
 - [ ] Final artwork accepts JPG, PNG, WebP, GIF or AVIF only, up to 20 MB, and is stored in the private delivery bucket.
 - [ ] Failed final-artwork uploads or failed saves clean up unlinked objects.
 - [ ] Replacing or clearing final artwork removes the previous private object only after the new database reference is saved.
-- [ ] Delivery is blocked without final payment, final approval, character name and final artwork.
+- [ ] Full Payment completion is blocked without 100% payment, final approval, character name and final artwork.
+- [ ] Public Customs Archive shows only completed final artwork, Custom ID, character name and category; buyer contact, client references and payment history remain private.
+- [ ] Active Custom requests never appear in the public Adopt catalog or Home inventory.
 - [ ] Delivery creates ownership and certificate exactly once.
 - [ ] Client feedback, revision notes and progress history persist after reload.
 - [ ] Custom ownership transfer remains visibly unavailable until implemented.
