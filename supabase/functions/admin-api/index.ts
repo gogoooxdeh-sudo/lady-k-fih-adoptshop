@@ -1590,6 +1590,74 @@ if (rpcName === "admin_complete_purchase_delivery") {
 return respond({ ok: true, data });
 }
 
+
+async function listStorageFiles(bucket: string, prefix = ""): Promise<string[]> {
+  const paths: string[] = [];
+  let offset = 0;
+  const pageSize = 100;
+
+  while (true) {
+    const { data, error } = await supabase.storage.from(bucket).list(prefix, {
+      limit: pageSize,
+      offset,
+      sortBy: { column: "name", order: "asc" },
+    });
+    if (error) throw new Error("Could not inspect storage bucket " + bucket + ": " + error.message);
+    const entries = data || [];
+    for (const entry of entries) {
+      const path = prefix ? prefix + "/" + entry.name : entry.name;
+      if (entry.id) {
+        paths.push(path);
+      } else {
+        paths.push(...await listStorageFiles(bucket, path));
+      }
+    }
+    if (entries.length < pageSize) break;
+    offset += entries.length;
+  }
+  return paths;
+}
+
+async function restoreStoreData() {
+  const buckets = ["adoptables", "custom-references", "private-deliveries"];
+  const storageCounts: Record<string, number> = {};
+
+  // Remove stored artwork and client uploads before removing their database references.
+  for (const bucket of buckets) {
+    const paths = await listStorageFiles(bucket);
+    for (let index = 0; index < paths.length; index += 100) {
+      const batch = paths.slice(index, index + 100);
+      const { error } = await supabase.storage.from(bucket).remove(batch);
+      if (error) throw new Error("Could not clear " + bucket + ": " + error.message);
+    }
+    storageCounts[bucket] = paths.length;
+  }
+
+  const deletionOrder = [
+    "certificates",
+    "custom_order_updates",
+    "ownership_records",
+    "payments",
+    "custom_reference_files",
+    "adopt_images",
+    "purchase_requests",
+    "custom_orders",
+    "adopts",
+    "customers",
+    "activity_log",
+  ];
+  const deleted: Record<string, number> = {};
+
+  for (const table of deletionOrder) {
+    const { data, error } = await supabase.from(table).delete().not("id", "is", null).select("id");
+    if (error) throw new Error("Could not clear " + table + ": " + error.message);
+    deleted[table] = data?.length || 0;
+  }
+
+  // shop_settings, admin_sessions and login protection are deliberately preserved.
+  return respond({ ok: true, deleted, storage: storageCounts });
+}
+
 Deno.serve(async (req: Request) => {
 if (req.method === "OPTIONS") {
 return new Response("ok", { headers: corsHeaders });
@@ -1623,6 +1691,10 @@ return respond({ ok: false, error: "Unauthorized." }, 401);
 switch (body.action) {
 case "dashboard":
 return await dashboard();
+
+case "restore-store-data":
+if (body.confirmation !== "RESET STORE") return respond({ ok: false, error: "Reset confirmation is required." }, 400);
+return await restoreStoreData();
 
 case "list":
 if (typeof body.resource !== "string") {
