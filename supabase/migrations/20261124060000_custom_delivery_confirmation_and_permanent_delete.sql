@@ -57,7 +57,7 @@ BEGIN
   IF v_order.payment_plan IS DISTINCT FROM 'full' OR NOT v_order.final_paid OR v_order.status NOT IN ('In Progress','Awaiting Delivery') THEN
     RAISE EXCEPTION 'Only a fully paid Full Payment order in progress can have delivery confirmed';
   END IF;
-  UPDATE public.custom_orders SET status='Completed',updated_at=v_now WHERE id=p_custom_order_id;
+  UPDATE public.custom_orders SET status='Completed',delivery_at=COALESCE(delivery_at,v_now),updated_at=v_now WHERE id=p_custom_order_id;
   INSERT INTO public.activity_log(entity_type,entity_id,action,description,metadata)
   VALUES('custom_order',p_custom_order_id,'custom_delivery_confirmed',
     'Artist manually confirmed delivery of the fully paid Custom Adopt',
