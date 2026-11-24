@@ -327,7 +327,20 @@ Deno.serve(async (req) => {
       }
       const request = data && typeof data === "object" ? data as Record<string, unknown> : {};
       console.info("[public-api] Custom request saved:", request.order_code || "record created");
-      const licenseFee = license === "Commercial Use" ? 25 : license === "Full Rights Transfer" ? 75 : 0;
+      const computedLicenseFee = license === "Commercial Use" ? 25 : license === "Full Rights Transfer" ? 75 : 0;
+      let pricingRow: Record<string, unknown> | null = null;
+      if (typeof request.id === "string") {
+        const { data: savedPricing, error: pricingError } = await supabase
+          .from("custom_orders")
+          .select("quote_base, license_fee, agreed_total")
+          .eq("id", request.id)
+          .maybeSingle();
+        if (pricingError) console.warn("[public-api] Could not read saved Custom pricing:", pricingError.message);
+        else pricingRow = savedPricing;
+      }
+      const basePrice = Number(pricingRow?.quote_base ?? request.quote_base ?? 37);
+      const licenseFee = Number(pricingRow?.license_fee ?? request.license_fee ?? computedLicenseFee);
+      const initialTotal = Number(pricingRow?.agreed_total ?? request.agreed_total ?? (basePrice + licenseFee));
       const telegramField = (label: string, value: unknown, maxLength: number) => {
         const normalized = typeof value === "string" ? value.replace(/\s+/g, " ").trim() : "";
         return normalized ? label + ": " + escapeTelegramHtml(normalized.slice(0, maxLength)) : "";
@@ -350,15 +363,20 @@ Deno.serve(async (req) => {
           "Discord: " + escapeTelegramHtml(discord),
           "Character: " + escapeTelegramHtml(payload.character_name || "Not specified"),
           "Category: " + escapeTelegramHtml(payload.category || "Other"),
+          "Base price: <b>$" + basePrice.toFixed(2) + " USD</b>",
           "License: " + escapeTelegramHtml(license),
           "License fee: <b>$" + licenseFee.toFixed(2) + " USD</b>",
+          "Initial total: <b>$" + initialTotal.toFixed(2) + " USD</b>",
           ...customDetails,
           "References uploaded: " + stored.length,
         ].join("\n"),
         supabase,
         "custom_request",
       );
-      return json({ ok: true, request: data });
+      return json({
+        ok: true,
+        request: { ...request, quote_base: basePrice, license_fee: licenseFee, initial_total: initialTotal },
+      });
     }
 
     return json({ ok: false, error: "Unknown request action." }, 400);
