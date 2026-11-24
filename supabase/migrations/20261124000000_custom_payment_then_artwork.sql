@@ -69,10 +69,11 @@ SET search_path TO 'pg_catalog', 'public'
 AS $function$
 DECLARE
  v_order public.custom_orders%ROWTYPE; v_certificate_id uuid; v_certificate_code text;
- v_ownership_id uuid; v_now timestamptz:=now(); v_custom_data jsonb;
+ v_ownership_id uuid; v_now timestamptz:=now(); v_custom_data jsonb; v_was_registered boolean:=false;
 BEGIN
  SELECT * INTO v_order FROM public.custom_orders WHERE id=p_custom_order_id FOR UPDATE;
  IF NOT FOUND THEN RAISE EXCEPTION 'Custom order not found'; END IF;
+ v_was_registered := v_order.final_artwork_saved_at IS NOT NULL;
  IF NOT v_order.final_paid THEN RAISE EXCEPTION 'Full payment must be confirmed before registering final artwork'; END IF;
  IF NOT v_order.final_approved THEN RAISE EXCEPTION 'Final design approval must be recorded before certificate registration'; END IF;
  IF nullif(btrim(coalesce(v_order.character_name,'')),'') IS NULL THEN RAISE EXCEPTION 'A final character name is required'; END IF;
@@ -105,11 +106,14 @@ BEGIN
   UPDATE public.certificates SET certificate_data=COALESCE(certificate_data,'{}'::jsonb)||v_custom_data||
    jsonb_build_object('ownership_id',v_ownership_id) WHERE id=v_certificate_id;
  END IF;
- INSERT INTO public.activity_log(entity_type,entity_id,action,description,metadata)
- VALUES('custom_order',p_custom_order_id,'final_artwork_registered',
-  'Final Custom artwork and attribution registered; certificate queued for review',
-  jsonb_build_object('certificate_id',v_certificate_id,'ownership_id',v_ownership_id,'custom_id',v_order.order_code));
- RETURN jsonb_build_object('ok',true,'custom_order_id',p_custom_order_id,'custom_id',v_order.order_code,
+ IF NOT v_was_registered THEN
+  INSERT INTO public.activity_log(entity_type,entity_id,action,description,metadata)
+  VALUES('custom_order',p_custom_order_id,'final_artwork_registered',
+   'Final Custom artwork and attribution registered; certificate queued for review',
+   jsonb_build_object('certificate_id',v_certificate_id,'ownership_id',v_ownership_id,'custom_id',v_order.order_code));
+ END IF;
+ RETURN jsonb_build_object('ok',true,'already_registered',v_was_registered,
+  'custom_order_id',p_custom_order_id,'custom_id',v_order.order_code,
   'certificate_id',v_certificate_id,'ownership_id',v_ownership_id,'final_artwork_saved_at',v_now);
 END;
 $function$;
