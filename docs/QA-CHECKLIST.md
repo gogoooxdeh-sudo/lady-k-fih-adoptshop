@@ -12,13 +12,13 @@
 ## Non-destructive checks already performed
 
 - Browser JavaScript parses successfully.
-- `index.html` and `prototype.html` are synchronized.
+- Netlify publishes the repository root; `index.html` is the active storefront entry point. `prototype.html` is a separate legacy preview and is not kept synchronized with the active entry point.
 - No duplicate HTML IDs were found in the active entry point.
 - Admin, auth and public Edge Functions deployed successfully.
 - All public-schema tables have RLS enabled.
 - No direct anon/authenticated table grants exist on private business tables.
 - Security-definer functions are restricted to `service_role` and use a restricted search path.
-- Storage buckets are private; no storage objects currently exist.
+- All three storage buckets are private. At the latest read-only inspection: `adoptables` contained 2 objects (10 MB limit), `custom-references` contained 0 objects (5 MB limit), and `private-deliveries` contained 0 objects (20 MB limit). The `LK-0001` Sold Archive image row has a matching private storage object.
 - No foreign-key indexes are missing.
 - Invalid-payload smoke checks reject malformed purchase, custom, manual-sale, transfer and delivery operations without inserting records.
 - Public request rate-limit function rejects malformed hashes without inserting a rate-limit row.
@@ -41,11 +41,15 @@
 - [ ] Temporarily Closed shows the notice, allows browsing, and blocks purchase/custom submissions.
 - [ ] Hidden from Public hides the storefront catalog and blocks submissions.
 - [ ] Public displays only visible Available inventory, Reserved listings and visible Sold Archive entries.
+- [ ] Sold Archive query independently returns every Sold record with `archive_visible = true`, even when `public_visible = false`.
+- [ ] Home section “Looking for past creations?” shows up to three visible Sold designs, and View More opens the complete Sold Archive.
 - [ ] Public catalog does not expose database UUIDs, private file paths or URL-like included-file values.
 - [ ] Private artwork is served only through expiring signed URLs.
 
 ### Forms and mobile interface
 - [ ] Required-field validation appears clearly for purchase and Custom Adopt forms.
+- [ ] All three Custom license options can be selected; the selected license and fee update correctly.
+- [ ] A successful Custom request stays on the Custom page and displays a confirmation with its request code, client summary, selected license and reference count.
 - [ ] Invalid email, missing Discord, missing ToS acceptance and invalid links are rejected.
 - [ ] The Custom Adopt form enforces 8 JPG, PNG, WebP, GIF or AVIF images maximum and 5 MB per image.
 - [ ] The interface remains usable at 360 px width.
@@ -56,7 +60,9 @@
 
 ### Settings and notifications
 - [ ] Store visibility persists after reload.
-- [ ] Each of the eight Telegram notification preferences persists.
+- [ ] All ten Telegram notification preferences persist, including independent Custom payment and Custom delivery categories.
+- [ ] Disabled Custom payment notifications do not suppress Adopt payment notifications, and vice versa.
+- [ ] Disabled Custom delivery notifications do not suppress Adopt delivery notifications, and vice versa.
 - [ ] Disabled categories do not send notifications.
 - [ ] Test Notification sends only a private test message and creates no business records.
 
@@ -91,7 +97,10 @@
 ### Custom Adopt
 - [ ] Public request stores the server-set US$37 base and server-calculated license fee.
 - [ ] Submitting with no reference images uses the JSON request path; submissions with references retain the secure multipart upload path.
-- [ ] The customer sees a request-received confirmation with the Custom order number, and the existing Telegram bot receives the Custom request alert.
+- [ ] The customer sees a request-received confirmation with the Custom order number, and the existing Telegram bot receives a detailed Custom request alert.
+- [ ] Initial 60%, final 40% and Full 100% payment alerts include amount, cumulative total paid and remaining balance.
+- [ ] Final 40% triggers one delivery alert only after the delivery transaction completes; Full 100% payment alone does not trigger delivery.
+- [ ] Repeated confirmation actions do not duplicate Custom payment or delivery alerts.
 - [ ] 8 images at or below 5 MB each are accepted.
 - [ ] 9 images, non-image files and files over 5 MB are rejected.
 - [ ] Failed uploads clean up previously uploaded references.

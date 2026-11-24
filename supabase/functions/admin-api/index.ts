@@ -14,13 +14,13 @@ function escapeTelegramHtml(value: unknown): string {
   })[char]!);
 }
 
-async function notifyTelegram(message: string): Promise<void> {
-  const category = message.includes("Ownership transfer") ? "ownership_transfer"
+async function notifyTelegram(message: string, categoryOverride?: string): Promise<void> {
+  const category = categoryOverride || (message.includes("Ownership transfer") ? "ownership_transfer"
     : message.includes("Manual sale") ? "manual_sale"
     : message.toLowerCase().includes("payment confirmed") ? "payment_confirmation"
     : message.includes("Certificate approved") || message.includes("Certificate rejected") ? "certificate_review"
     : message.toLowerCase().includes("delivery completed") ? "delivery_complete"
-    : message.includes("returned to shop") ? "returned_to_shop" : "other";
+    : message.includes("returned to shop") ? "returned_to_shop" : "other");
   const { data: preferenceRow, error: preferenceError } = await supabase
     .from("shop_settings").select("setting_value")
     .eq("setting_key", "telegram_notifications").maybeSingle();
@@ -51,7 +51,8 @@ async function notifyTelegram(message: string): Promise<void> {
       console.error("[telegram] Message delivery failed with HTTP", response.status);
     } else {
       const result = await response.json().catch(() => null);
-      if (!result?.ok) console.error("[telegram] Telegram rejected a notification.");
+      if (!result?.ok) console.error("[telegram] Telegram rejected a notification:", category);
+      else console.info("[telegram] Notification delivered:", category);
     }
   } catch (error) {
     console.error("[telegram] Message delivery failed:", error instanceof Error ? error.message : "unknown error");
@@ -598,7 +599,8 @@ async function sendTelegramTest() {
 async function updateTelegramPreferences(body: Record<string, unknown>) {
   const keys = [
     "purchase_request", "custom_request", "manual_sale", "ownership_transfer",
-    "payment_confirmation", "certificate_review", "delivery_complete", "returned_to_shop",
+    "payment_confirmation", "certificate_review", "delivery_complete",
+    "custom_payment_confirmation", "custom_delivery_complete", "returned_to_shop",
   ] as const;
   if (!isObject(body.notification_preferences)) {
     return respond({ ok: false, error: "Notification preferences are required." }, 400);
@@ -896,6 +898,7 @@ const { data: confirmation, error: confirmationError } = await supabase.rpc(
 { p_payment_id: paymentId },
 );
 if (confirmationError) return respond({ ok: false, error: confirmationError.message }, 400);
+if (confirmation?.already_confirmed) return respond({ ok: true, already_confirmed: true, payment_id: paymentId });
 await notifyTelegram(
   "💳 <b>Purchase payment confirmed</b>\n" +
   "Request: <code>" + escapeTelegramHtml(request.request_code || request.id) + "</code>\n" +
@@ -1041,7 +1044,7 @@ if (!selected) return respond({ ok: false, error: "Unknown payment stage." }, 40
 
 const { data: order, error: orderError } = await supabase
 .from("custom_orders")
-.select("id, order_code, character_name, final_artwork_path, quote_base, license_fee, agreed_total, payment_plan, quote_sent, client_approved_quote, initial_paid, final_approved, final_paid, status")
+.select("id, order_code, character_name, category, license_type, final_artwork_path, quote_base, license_fee, agreed_total, payment_plan, quote_sent, client_approved_quote, initial_paid, final_approved, final_paid, status")
 .eq("id", body.custom_order_id)
 .maybeSingle();
 if (orderError) return respond({ ok: false, error: orderError.message }, 400);
@@ -1112,14 +1115,34 @@ selected.rpc,
 { p_payment_id: paymentId },
 );
 if (confirmationError) return respond({ ok: false, error: confirmationError.message }, 400);
+if (confirmation?.already_confirmed) return respond({ ok: true, already_confirmed: true, payment_id: paymentId });
 
+const { data: confirmedPayments, error: paidHistoryError } = await supabase
+.from("payments").select("amount").eq("custom_order_id", order.id).eq("status", "Confirmed");
+if (paidHistoryError) return respond({ ok: false, error: paidHistoryError.message }, 400);
+const totalPaid = (confirmedPayments || []).reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
+const remaining = Math.max(0, Number((total - totalPaid).toFixed(2)));
 await notifyTelegram(
-  "💳 <b>Custom Adopt payment confirmed</b>\n" +
-  "Order: <code>" + escapeTelegramHtml(order.order_code || order.id) + "</code>\n" +
+  "💳 <b>Custom payment confirmed</b>\n" +
+  "Request: <code>" + escapeTelegramHtml(order.order_code || order.id) + "</code>\n" +
   "Character: " + escapeTelegramHtml(order.character_name || "Custom character") + "\n" +
-  "Stage: " + escapeTelegramHtml(selected.label) + "\n" +
-  "Amount: <b>$" + escapeTelegramHtml(amount.toFixed(2)) + " USD</b>",
+  "License: " + escapeTelegramHtml(order.license_type || "Personal Use") + "\n" +
+  "Payment: " + escapeTelegramHtml(selected.label) + "\n" +
+  "Amount: <b>$" + escapeTelegramHtml(amount.toFixed(2)) + " USD</b>\n" +
+  "Total paid: <b>$" + escapeTelegramHtml(totalPaid.toFixed(2)) + " USD</b>\n" +
+  "Remaining: <b>$" + escapeTelegramHtml(remaining.toFixed(2)) + " USD</b>",
+  "custom_payment_confirmation",
 );
+if (requestedStage === "final") {
+  await notifyTelegram(
+    "📦 <b>Custom delivery completed</b>\n" +
+    "Request: <code>" + escapeTelegramHtml(order.order_code || order.id) + "</code>\n" +
+    "Character: " + escapeTelegramHtml(order.character_name || "Custom character") + "\n" +
+    "License: " + escapeTelegramHtml(order.license_type || "Personal Use") + "\n" +
+    "Total: <b>$" + escapeTelegramHtml(total.toFixed(2)) + " USD</b>",
+    "custom_delivery_complete",
+  );
+}
 return respond({ ok: true, payment_id: paymentId, amount, stage: selected.label, data: confirmation });
 }
 
@@ -1422,13 +1445,20 @@ if (rpcName === "admin_complete_purchase_delivery") {
     (request?.total != null ? "\nTotal: $" + escapeTelegramHtml(Number(request.total).toFixed(2)) + " USD" : ""),
   );
 } else if (rpcName === "admin_complete_custom_delivery") {
-  const { data: order } = await supabase.from("custom_orders")
-    .select("order_code, character_name").eq("id", id).maybeSingle();
-  await notifyTelegram(
-    "✦ <b>Custom Adopt delivery completed</b>\nOrder: <code>" +
-    escapeTelegramHtml(order?.order_code || id) + "</code>\nCharacter: " +
-    escapeTelegramHtml(order?.character_name || "Custom character"),
-  );
+  if (data?.already_completed !== true) {
+    const { data: order } = await supabase.from("custom_orders")
+      .select("order_code, character_name, license_type, agreed_total, quote_base, license_fee")
+      .eq("id", id).maybeSingle();
+    const total = Number(order?.agreed_total ?? (Number(order?.quote_base || 0) + Number(order?.license_fee || 0)));
+    await notifyTelegram(
+      "📦 <b>Custom delivery completed</b>\nRequest: <code>" +
+      escapeTelegramHtml(order?.order_code || id) + "</code>\nCharacter: " +
+      escapeTelegramHtml(order?.character_name || "Custom character") + "\nLicense: " +
+      escapeTelegramHtml(order?.license_type || "Personal Use") + "\nTotal: <b>$" +
+      escapeTelegramHtml(total.toFixed(2)) + " USD</b>",
+      "custom_delivery_complete",
+    );
+  }
 } else if (rpcName === "admin_return_to_shop") {
   const { data: request } = await supabase.from("purchase_requests")
     .select("request_code").eq("id", id).maybeSingle();
