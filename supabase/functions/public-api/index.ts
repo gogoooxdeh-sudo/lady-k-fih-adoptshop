@@ -50,7 +50,8 @@ async function notifyTelegram(message: string, client: any, category: "custom_re
       console.error("[telegram] Message delivery failed with HTTP", response.status);
     } else {
       const result = await response.json().catch(() => null);
-      if (!result?.ok) console.error("[telegram] Telegram rejected a notification.");
+      if (!result?.ok) console.error("[telegram] Telegram rejected a notification:", category);
+      else console.info("[telegram] Notification delivered:", category);
     }
   } catch (error) {
     console.error("[telegram] Message delivery failed:", error instanceof Error ? error.message : "unknown error");
