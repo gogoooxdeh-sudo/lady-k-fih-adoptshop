@@ -575,9 +575,9 @@ async function customAction(id,act,nextValue=null){const r=customRequests.find(x
   if(confirmation?.ok===false)throw new Error(confirmation.error||'Full payment could not be confirmed.');
   await loadAdminData();
   const fresh=customRequests.find(x=>x.databaseId===r.databaseId);
-  if(fresh){fresh.status='Completed';fresh.adminStatus='Completed';fresh.fullPaid=true;fresh.initialPaid=true;fresh.finalPaid=true;}
+  if(!fresh||!fresh.fullPaid||fresh.status!=='Completed')throw new Error('Supabase did not return this order as fully paid and Completed. The artwork editor was not opened; check the payment record before retrying.');
   renderAll();
-  if(fresh)editCustomCharacter(fresh);
+  editCustomCharacter(fresh);
  }catch(error){toast(error?.message||'Custom payment could not be confirmed.',true)}return
 }if(act==='initial'){
  if(r.paymentPlan==='full'||!r.accepted||!(r.quoteBase>0)||!r.quoteSent||!r.clientApprovedQuote||r.initialPaid||!r.databaseId){toast('Accept the request, send and obtain approval for the quote, and select Split Payment first.',true);return}
@@ -605,9 +605,9 @@ async function customAction(id,act,nextValue=null){const r=customRequests.find(x
   if(confirmation?.ok===false)throw new Error(confirmation.error||'Final 40% payment could not be confirmed.');
   await loadAdminData();
   const fresh=customRequests.find(x=>x.databaseId===r.databaseId);
-  if(fresh){fresh.status='Completed';fresh.adminStatus='Completed';fresh.finalPaid=true;}
+  if(!fresh||!fresh.finalPaid||fresh.status!=='Completed')throw new Error('Supabase did not return this order as fully paid and Completed. The artwork editor was not opened; check the payment record before retrying.');
   renderAll();
-  if(fresh)editCustomCharacter(fresh);
+  editCustomCharacter(fresh);
  }catch(error){toast(error?.message||'Custom payment could not be confirmed.',true)}return
 }if(act==='delivery'){
  if(!(r.fullPaid||r.finalPaid)||!r.finalApproved||!r.characterName?.trim()||!r.originalIdeaBy?.trim()||!r.finalArtwork?.storagePath){toast('Confirm full payment and final approval, then save Custom Name, Original Idea By and final artwork first.',true);return}
