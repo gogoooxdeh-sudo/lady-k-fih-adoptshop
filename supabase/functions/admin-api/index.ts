@@ -1134,14 +1134,12 @@ await notifyTelegram(
   "Remaining: <b>$" + escapeTelegramHtml(remaining.toFixed(2)) + " USD</b>",
   "custom_payment_confirmation",
 );
-if (requestedStage === "final") {
+if (requestedStage !== "initial") {
   await notifyTelegram(
-    "📦 <b>Custom delivery completed</b>\n" +
+    "✓ <b>Custom payment completed — final artwork pending</b>\n" +
     "Request: <code>" + escapeTelegramHtml(order.order_code || order.id) + "</code>\n" +
-    "Character: " + escapeTelegramHtml(order.character_name || "Custom character") + "\n" +
-    "License: " + escapeTelegramHtml(order.license_type || "Personal Use") + "\n" +
-    "Total: <b>$" + escapeTelegramHtml(total.toFixed(2)) + " USD</b>",
-    "custom_delivery_complete",
+    "The request is marked Completed. Open its record to add the final artwork and attribution.",
+    "custom_payment_confirmation",
   );
 }
 return respond({ ok: true, payment_id: paymentId, amount, stage: selected.label, data: confirmation });
@@ -1286,7 +1284,7 @@ if ((current.initial_paid || current.final_paid) && ["Rejected", "Cancelled"].in
 return respond({ ok: false, error: "A paid Custom Adopt cannot be rejected or cancelled." }, 409);
 }
 if (current.status === "Completed") {
-  const allowedPostPaymentFields = new Set(["character_name", "original_idea_by", "final_artwork_path", "metadata"]);
+  const allowedPostPaymentFields = new Set(["character_name", "original_idea_by", "final_artwork_path", "metadata", "preview_presented", "final_approved"]);
   if (Object.keys(values).some((key) => !allowedPostPaymentFields.has(key))) {
     return respond({ ok: false, error: "A paid Completed order only allows final artwork and attribution details to be registered." }, 409);
   }
@@ -1450,17 +1448,15 @@ if (rpcName === "admin_complete_purchase_delivery") {
     (request?.total != null ? "\nTotal: $" + escapeTelegramHtml(Number(request.total).toFixed(2)) + " USD" : ""),
   );
 } else if (rpcName === "admin_complete_custom_delivery") {
-  if (data?.already_completed !== true) {
+  if (data?.already_registered !== true) {
     const { data: order } = await supabase.from("custom_orders")
-      .select("order_code, character_name, license_type, agreed_total, quote_base, license_fee")
+      .select("order_code, character_name, license_type")
       .eq("id", id).maybeSingle();
-    const total = Number(order?.agreed_total ?? (Number(order?.quote_base || 0) + Number(order?.license_fee || 0)));
     await notifyTelegram(
-      "📦 <b>Custom delivery completed</b>\nRequest: <code>" +
+      "✦ <b>Final Custom artwork registered</b>\nRequest: <code>" +
       escapeTelegramHtml(order?.order_code || id) + "</code>\nCharacter: " +
-      escapeTelegramHtml(order?.character_name || "Custom character") + "\nLicense: " +
-      escapeTelegramHtml(order?.license_type || "Personal Use") + "\nTotal: <b>$" +
-      escapeTelegramHtml(total.toFixed(2)) + " USD</b>",
+      escapeTelegramHtml(order?.character_name || "Custom character") +
+      "\nCertificate created for artist review. Customer delivery is still a separate action.",
       "custom_delivery_complete",
     );
   }
