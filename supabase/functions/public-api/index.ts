@@ -191,8 +191,9 @@ Deno.serve(async (req) => {
       }
       const { data: completedCustoms, error: customArchiveError } = await supabase
         .from("custom_orders")
-        .select("order_code, character_name, category, final_artwork_path, final_artwork_saved_at, created_at")
+        .select("order_code, character_name, category, final_artwork_path, final_artwork_saved_at, public_archive_visible, created_at")
         .eq("status", "Completed")
+        .eq("public_archive_visible", true)
         .not("final_artwork_path", "is", null)
         .not("final_artwork_saved_at", "is", null)
         .order("final_artwork_saved_at", { ascending: false, nullsFirst: false });
