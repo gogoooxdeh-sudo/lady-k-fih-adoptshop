@@ -22,11 +22,17 @@ BEGIN
     FROM public.purchase_requests
    WHERE adopt_id = p_adopt_id;
 
-  SELECT COALESCE(jsonb_agg(storage_path), '[]'::jsonb)
+  SELECT COALESCE(jsonb_agg(image.storage_path), '[]'::jsonb)
     INTO v_paths
-    FROM public.adopt_images
-   WHERE adopt_id = p_adopt_id
-     AND storage_path IS NOT NULL;
+    FROM public.adopt_images AS image
+   WHERE image.adopt_id = p_adopt_id
+     AND image.storage_path IS NOT NULL
+     AND NOT EXISTS (
+       SELECT 1
+         FROM public.adopt_images AS shared
+        WHERE shared.storage_path = image.storage_path
+          AND shared.adopt_id <> p_adopt_id
+     );
 
   -- Remove activity entries for this Adopt and every linked purchase request.
   DELETE FROM public.activity_log
