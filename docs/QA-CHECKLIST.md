@@ -12,13 +12,13 @@
 ## Non-destructive checks already performed
 
 - Browser JavaScript parses successfully.
-- `index.html` and `prototype.html` are synchronized.
+- Netlify publishes the repository root; `index.html` is the active storefront entry point. `prototype.html` is a separate legacy preview and is not kept synchronized with the active entry point.
 - No duplicate HTML IDs were found in the active entry point.
 - Admin, auth and public Edge Functions deployed successfully.
 - All public-schema tables have RLS enabled.
 - No direct anon/authenticated table grants exist on private business tables.
 - Security-definer functions are restricted to `service_role` and use a restricted search path.
-- Storage buckets are private; no storage objects currently exist.
+- All three storage buckets are private. At the latest read-only inspection: `adoptables` contained 2 objects (10 MB limit), `custom-references` contained 0 objects (5 MB limit), and `private-deliveries` contained 0 objects (20 MB limit). The `LK-0001` Sold Archive image row has a matching private storage object.
 - No foreign-key indexes are missing.
 - Invalid-payload smoke checks reject malformed purchase, custom, manual-sale, transfer and delivery operations without inserting records.
 - Public request rate-limit function rejects malformed hashes without inserting a rate-limit row.
