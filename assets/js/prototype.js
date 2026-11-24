@@ -29,8 +29,8 @@ function renderPublic(){const banner=$('#store-status-banner');if(banner){const 
 // The microtask still runs if a subsequent synchronous admin setup step throws.
 queueMicrotask(()=>{loadPublicCatalog()});
 
-// Independent early dispatcher for section navigation and listing actions.
-// Keep route changes separate from the larger admin/storefront click handler below.
+// Independent early dispatcher for PUBLIC storefront navigation only.
+// Admin navigation is intentionally left to its existing, working handler.
 window.addEventListener('click',e=>{
  const target=e.target instanceof Element?e.target:e.target?.parentElement;
  if(!target)return;
@@ -44,19 +44,6 @@ window.addEventListener('click',e=>{
    return;
   }
  }
- const attention=target.closest('[data-attention-type]');
- if(attention){
-  e.preventDefault();e.stopImmediatePropagation();
-  const type=attention.dataset.attentionType,id=attention.dataset.id;
-  adminGo(attention.dataset.adminGoto);
-  if(type==='pr'){const r=purchaseRequests.find(x=>x.id===id);if(r)openPurchaseDetail(r)}
-  else if(type==='cr'){const r=customRequests.find(x=>x.id===id);if(r)openCustomDetail(r)}
-  return;
- }
- const admin=target.closest('[data-admin]');
- if(admin){e.preventDefault();e.stopImmediatePropagation();adminGo(admin.dataset.admin);return}
- const adminGoto=target.closest('[data-admin-goto]');
- if(adminGoto){e.preventDefault();e.stopImmediatePropagation();adminGo(adminGoto.dataset.adminGoto);return}
  const detail=target.closest('[data-open-detail]');
  if(detail){e.preventDefault();e.stopImmediatePropagation();showDetail(detail.dataset.openDetail);return}
  const buy=target.closest('[data-buy]');
