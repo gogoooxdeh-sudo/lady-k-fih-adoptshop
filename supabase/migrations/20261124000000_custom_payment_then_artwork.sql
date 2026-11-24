@@ -116,3 +116,7 @@ $function$;
 
 REVOKE ALL ON FUNCTION public.admin_confirm_custom_final_payment(uuid) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.admin_confirm_custom_final_payment(uuid) TO service_role;
+REVOKE ALL ON FUNCTION public.admin_confirm_custom_full_payment(uuid) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.admin_confirm_custom_full_payment(uuid) TO service_role;
+REVOKE ALL ON FUNCTION public.admin_complete_custom_delivery(uuid) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.admin_complete_custom_delivery(uuid) TO service_role;
