@@ -548,6 +548,13 @@ async function deleteCustomRecord(r){
  }catch(error){toast(error?.message||'Custom could not be deleted.',true)}
 }
 async function customAction(id,act,nextValue=null){const r=customRequests.find(x=>x.id===id);if(!r)return;if(act==='artwork'){editCustomCharacter(r);return}if(act==='status'){
+ const hasConfirmedPayment=!!(r.fullPaid||r.initialPaid||r.finalPaid);
+ if(hasConfirmedPayment){
+  if(r.paymentPlan==='full'&&r.fullPaid&&!['In Progress','Ready for Delivery','Completed'].includes(nextValue)){toast('A fully paid Custom cannot return to request or payment review.',true);return}
+  if(r.paymentPlan==='full'&&r.fullPaid&&r.status==='Awaiting Delivery'&&nextValue==='In Progress'){toast('A Custom already awaiting delivery cannot be moved back to In Progress.',true);return}
+  if(r.paymentPlan!=='full'&&r.initialPaid&&!r.finalPaid&& !['In Progress','Awaiting Payment'].includes(nextValue)){toast('A Split Payment order with its initial 60% confirmed cannot return to request review or be cancelled.',true);return}
+  if(r.paymentPlan!=='full'&&r.finalPaid&&nextValue!=='Completed'){toast('A Custom with its final 40% confirmed cannot be moved out of Completed.',true);return}
+ }
  if(nextValue==='Completed'){if(customStatusLabel(r)==='Completed'||r.deliverySimulated){toast('This Custom Adopt is already completed.',true);return}if(r.paymentPlan!=='full'){toast('Split Payment orders become Completed when the final 40% is confirmed.',true);return}return await customAction(id,'confirm-delivery')}
  if(nextValue==='Cancelled'){return await customAction(id,'cancel')}
  if(nextValue==='Ready for Delivery'&&!(r.fullPaid||r.finalPaid)){toast('Confirm the required payment before setting Ready for Delivery.',true);return}
