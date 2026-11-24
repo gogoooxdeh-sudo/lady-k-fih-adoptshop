@@ -7,7 +7,7 @@ const LICENSES=[{name:'Personal Use',fee:0,seal:'personal'},{name:'Commercial Us
 const CATEGORIES=['Human','Furry / Anthro','Feral','Other'];
 const STATUS=['Available','Reserved','Sold'];
 const PR_STATUS=['Pending Review','Clarification Requested','Approved','Payment Confirmed','Delivered','Rejected','Cancelled'];
-const CR_STATUS=['Pending Review','Clarification Requested','Approved','Quote Pending','Quote Sent','Awaiting Client Approval','Awaiting Initial Payment','Initial Payment Confirmed','In Progress','Awaiting Preview','Awaiting Final Approval','Awaiting Final Payment','Final Payment Confirmed','Awaiting Delivery','Delivered','Completed','Cancelled'];const CUSTOM_ADMIN_STATUSES=['New Request','In Progress','Ready for Delivery','Completed','Cancelled'];
+const CR_STATUS=['Pending Review','Clarification Requested','Approved','Quote Pending','Quote Sent','Awaiting Client Approval','Awaiting Initial Payment','Initial Payment Confirmed','In Progress','Awaiting Final Payment','Final Payment Confirmed','Completed','Cancelled'];const CUSTOM_ADMIN_STATUSES=['New Request','In Progress','Ready for Delivery','Completed','Cancelled'];
 let adopts=[],purchaseRequests=[],customRequests=[],customArchive=[],ownership=[],activities=[];
 let notificationPrefs={purchase:true,custom:true,payment:true,cancellation:true,error:true},notificationChannels={email:false,telegram:false},storeVisibility='Temporarily Closed';
 let currentPage='home',activeCategory='All categories',currentAdoptId=null,currentLicense='Personal Use',customLicense='Personal Use',customFiles=[],certificateSelection='',toastTimer=null,homePolaroidAdoptId=null;
@@ -602,17 +602,7 @@ async function customAction(id,act,nextValue=null){const r=customRequests.find(x
   await loadAdminData();renderAll();
   const fresh=customRequests.find(x=>x.databaseId===r.databaseId);if(fresh)openCustomDetail(fresh);
  }catch(error){toast(error?.message||'Custom payment could not be confirmed.',true)}return
-}if(act==='progress'){askText('Update design progress','Describe the current design stage…',v=>persistCustomNote(r,'Note',v));return}if(act==='note'){askText('Add private review note','Enter a note for the artist…',v=>persistCustomNote(r,'Note',v));return}if(act==='feedback'){askText('Record client feedback','Enter feedback received…',v=>persistCustomNote(r,'Feedback',v));return}if(act==='suggest'){askText('Record revision suggestion','Enter the client suggestion to review…',v=>persistCustomNote(r,'Suggestion',v,'Pending Review'));return}if(act==='preview'){
- if(!(r.initialPaid||r.fullPaid)){toast('Confirm the required payment before recording a preview presentation.',true);return}
- if(!confirm('Record that the design preview was presented?'))return;
- const previewValues={preview_presented:true};if(customStatusLabel(r)!=='Completed')previewValues.status='Awaiting Final Approval';const saved=await persistCustomUpdate(r,previewValues);
- if(saved){renderAll();openCustomDetail(saved)}return
-}if(act==='final-approval'){
- if(!r.previewPresented||r.finalApproved){toast('Record a preview presentation first.',true);return}
- if(!confirm('Record the client’s final design approval?'))return;
- const approvalValues={final_approved:true};if(customStatusLabel(r)!=='Completed')approvalValues.status='Awaiting Final Payment';const saved=await persistCustomUpdate(r,approvalValues);
- if(saved){if((saved.fullPaid||saved.finalPaid)&&saved.finalArtwork?.storagePath&&saved.characterName?.trim()&&saved.originalIdeaBy?.trim()){try{await window.LKFBackend.admin('complete-custom-delivery',{custom_order_id:saved.databaseId});await loadAdminData()}catch(error){toast(error?.message||'Final artwork is saved, but certificate registration is still pending.',true)}}renderAll();const fresh=customRequests.find(x=>x.databaseId===r.databaseId);if(fresh)openCustomDetail(fresh)}return
-}if(act==='final'){return customAction(id,'full-payment')}if(act==='delivery'){
+}if(act==='progress'){askText('Update design progress','Describe the current design stage…',v=>persistCustomNote(r,'Note',v));return}if(act==='note'){askText('Add private review note','Enter a note for the artist…',v=>persistCustomNote(r,'Note',v));return}if(act==='feedback'){askText('Record client feedback','Enter feedback received…',v=>persistCustomNote(r,'Feedback',v));return}if(act==='suggest'){askText('Record revision suggestion','Enter the client suggestion to review…',v=>persistCustomNote(r,'Suggestion',v,'Pending Review'));return}if(act==='final'){return customAction(id,'full-payment')}if(act==='delivery'){
  if(!(r.fullPaid||r.finalPaid)||!r.characterName?.trim()||!r.originalIdeaBy?.trim()||!r.finalArtwork?.storagePath){toast('Confirm payment, then save Custom Name, Original Idea By and final artwork first.',true);return}
  if(r.finalArtworkRegistered){toast('This Custom is already registered and its certificate is available for review.',true);return}
  if(!confirm('Register the finished Custom, ownership record and certificate for artist review?'))return;
