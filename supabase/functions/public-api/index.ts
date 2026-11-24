@@ -191,17 +191,18 @@ Deno.serve(async (req) => {
       }
       const { data: completedCustoms, error: customArchiveError } = await supabase
         .from("custom_orders")
-        .select("order_code, character_name, category, final_artwork_path, delivery_at, created_at")
+        .select("order_code, character_name, category, final_artwork_path, final_artwork_saved_at, created_at")
         .eq("status", "Completed")
         .not("final_artwork_path", "is", null)
-        .order("delivery_at", { ascending: false, nullsFirst: false });
+        .not("final_artwork_saved_at", "is", null)
+        .order("final_artwork_saved_at", { ascending: false, nullsFirst: false });
       if (customArchiveError) throw customArchiveError;
       const customArchive = [];
       for (const order of completedCustoms || []) {
         if (!order.final_artwork_path) continue;
         const { data: signed, error: signError } = await supabase.storage.from("private-deliveries").createSignedUrl(order.final_artwork_path, 86400);
         if (signError || !signed?.signedUrl) continue;
-        customArchive.push({ id: order.order_code, name: order.character_name || "Custom character", category: order.category || "Custom design", imageUrl: signed.signedUrl, completedAt: order.delivery_at || order.created_at });
+        customArchive.push({ id: order.order_code, name: order.character_name || "Custom character", category: order.category || "Custom design", imageUrl: signed.signedUrl, completedAt: order.final_artwork_saved_at || order.created_at });
       }
       return json({ ok: true, adopts: items, customArchive, storeVisibility });
     }
