@@ -1132,6 +1132,16 @@ await notifyTelegram(
   "Remaining: <b>$" + escapeTelegramHtml(remaining.toFixed(2)) + " USD</b>",
   "custom_payment_confirmation",
 );
+if (requestedStage === "final") {
+  await notifyTelegram(
+    "📦 <b>Custom delivery completed</b>\n" +
+    "Request: <code>" + escapeTelegramHtml(order.order_code || order.id) + "</code>\n" +
+    "Character: " + escapeTelegramHtml(order.character_name || "Custom character") + "\n" +
+    "License: " + escapeTelegramHtml(order.license_type || "Personal Use") + "\n" +
+    "Total: <b>$" + escapeTelegramHtml(total.toFixed(2)) + " USD</b>",
+    "custom_delivery_complete",
+  );
+}
 return respond({ ok: true, payment_id: paymentId, amount, stage: selected.label, data: confirmation });
 }
 
