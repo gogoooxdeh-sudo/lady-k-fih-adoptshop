@@ -80,10 +80,16 @@ BEGIN
   PERFORM 1 FROM public.custom_orders WHERE id=p_custom_order_id FOR UPDATE;
   IF NOT FOUND THEN RAISE EXCEPTION 'Custom request not found'; END IF;
 
-  SELECT COALESCE(jsonb_agg(storage_path),'[]'::jsonb)
+  SELECT COALESCE(jsonb_agg(own.storage_path),'[]'::jsonb)
     INTO v_reference_paths
-    FROM public.custom_reference_files
-    WHERE custom_order_id=p_custom_order_id AND storage_path IS NOT NULL;
+    FROM public.custom_reference_files own
+    WHERE own.custom_order_id=p_custom_order_id
+      AND own.storage_path IS NOT NULL
+      AND NOT EXISTS (
+        SELECT 1 FROM public.custom_reference_files shared
+        WHERE shared.storage_path=own.storage_path
+          AND shared.custom_order_id<>p_custom_order_id
+      );
 
   SELECT final_artwork_path INTO v_final_artwork_path
     FROM public.custom_orders WHERE id=p_custom_order_id;
