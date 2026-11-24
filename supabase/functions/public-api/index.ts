@@ -328,7 +328,7 @@ Deno.serve(async (req) => {
       console.info("[public-api] Custom request saved:", request.order_code || "record created");
       const licenseFee = license === "Commercial Use" ? 25 : license === "Full Rights Transfer" ? 75 : 0;
       const telegramField = (label: string, value: unknown, maxLength: number) => {
-        const normalized = typeof value === "string" ? value.replace(/\\s+/g, " ").trim() : "";
+        const normalized = typeof value === "string" ? value.replace(/\s+/g, " ").trim() : "";
         return normalized ? label + ": " + escapeTelegramHtml(normalized.slice(0, maxLength)) : "";
       };
       const customDetails = [
@@ -353,7 +353,7 @@ Deno.serve(async (req) => {
           "License fee: <b>$" + licenseFee.toFixed(2) + " USD</b>",
           ...customDetails,
           "References uploaded: " + stored.length,
-        ].join("\\n"),
+        ].join("\n"),
         supabase,
         "custom_request",
       );
