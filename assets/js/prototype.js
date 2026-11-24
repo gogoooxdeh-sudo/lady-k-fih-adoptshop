@@ -206,8 +206,13 @@ function initCustomForm(){const form=$('#custom-form');if(!form)return;customLic
   $('#custom-errors').innerHTML=errorBox([error?.message||'The Custom Adopt request could not be submitted. Please try again.']);
   form.dataset.submitting='false';submit.disabled=false;submit.textContent='Submit Custom Adopt Request';
  }
-});
-}function openAccess(){
+},true);
+}
+
+// Bind the public Custom form before any optional admin-panel setup can fail.
+initCustomForm();
+
+function openAccess(){
  const root=document.createElement('div');root.className='modal-backdrop';
  root.innerHTML=`<section class="modal-card access-card" role="dialog" aria-modal="true" aria-labelledby="access-title"><button class="modal-close" aria-label="Close">×</button><span class="hero-star">✧</span><p class="eyebrow">Private administrator area</p><h2 id="access-title">Administrator Access</h2><p class="muted">Sign in with the administrator password.</p><form id="real-admin-login"><label class="field">Password<input id="admin-password" type="password" autocomplete="current-password" required></label><div id="access-message" class="fine" role="status"></div><button class="btn primary" id="admin-login-submit" type="submit">Log In</button></form></section>`;
  document.body.append(root);const close=()=>root.remove();root.querySelector('.modal-close').onclick=close;root.addEventListener('click',e=>{if(e.target===root)close()});
@@ -755,5 +760,5 @@ $('#admin-save-notification-preferences').addEventListener('click',async()=>{
  finally{button.disabled=false;button.textContent='Save Notification Preferences'}
 });
 $('#certificate-select').addEventListener('change',()=>{certificateSelection=$('#certificate-select').value;$('#certificate-area').innerHTML='';const ok=!!getCertificate();$('#certificate-preview').disabled=!ok;$('#certificate-download').disabled=!ok});$('#certificate-preview').addEventListener('click',showCertificate);$('#certificate-download').addEventListener('click',()=>printCertificate());$('#certificate-local-download').addEventListener('click',()=>downloadCertificate());$('#custom-certificate-select').addEventListener('change',()=>{$('#custom-certificate-area').innerHTML='';const ok=!!getCertificate($('#custom-certificate-select').value);$('#custom-certificate-preview').disabled=!ok;$('#custom-certificate-download').disabled=!ok});$('#custom-certificate-preview').addEventListener('click',showCustomCertificate);$('#custom-certificate-download').addEventListener('click',printCustomCertificate);$('#custom-certificate-local-download').addEventListener('click',()=>downloadCertificate($('#custom-certificate-select').value));window.addEventListener('popstate',()=>{const p=location.hash.slice(1).split('#')[0];if(['home','available','details','custom','archive','custom-archive','information','contact'].includes(p)&&p!==currentPage){goPage(p,{historyPush:false});if(p==='details'){const a=adopts.find(x=>x.id===currentAdoptId&&x.status!=='Hidden')||adopts.find(x=>x.status==='Available');if(a){currentAdoptId=a.id;renderDetail(a)}}}});window.addEventListener('keydown',e=>{if(e.key==='Escape'){document.querySelector('.modal-backdrop')?.remove();$('#public-nav').classList.remove('open');$('#admin-sidebar').classList.remove('open')}});
-initCustomForm();$('#year').textContent=new Date().getFullYear();const initialPage=location.hash.slice(1).split('#')[0]||'home';goPage(initialPage==='details'?'home':initialPage,{historyPush:false,scroll:false});renderAll();
+$('#year').textContent=new Date().getFullYear();const initialPage=location.hash.slice(1).split('#')[0]||'home';goPage(initialPage==='details'?'home':initialPage,{historyPush:false,scroll:false});renderAll();
 })();
