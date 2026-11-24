@@ -1084,7 +1084,7 @@ async function confirmCustomDelivery(body: Record<string, unknown>) {
     .eq("id", body.custom_order_id).maybeSingle();
   if (error) return respond({ ok: false, error: error.message }, 400);
   if (!order) return respond({ ok: false, error: "Custom Adopt order not found." }, 404);
-  if (order.payment_plan !== "full" || !order.final_paid || order.status !== "In Progress") {
+  if (order.payment_plan !== "full" || !order.final_paid || !["In Progress", "Awaiting Delivery"].includes(order.status)) {
     return respond({ ok: false, error: "Only a fully paid Full Payment order in progress can have delivery confirmed." }, 409);
   }
   const { data, error: rpcError } = await supabase.rpc("admin_confirm_custom_delivery", {
