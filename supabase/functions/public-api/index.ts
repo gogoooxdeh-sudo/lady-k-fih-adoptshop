@@ -326,21 +326,34 @@ Deno.serve(async (req) => {
       }
       const request = data && typeof data === "object" ? data as Record<string, unknown> : {};
       console.info("[public-api] Custom request saved:", request.order_code || "record created");
-      const customSummary = [
-        payload.concept, payload.appearance, payload.colors, payload.clothing,
-        payload.theme, payload.instructions,
-      ].filter((value) => typeof value === "string" && value.trim()).join(" · ").slice(0, 700);
+      const licenseFee = license === "Commercial Use" ? 25 : license === "Full Rights Transfer" ? 75 : 0;
+      const telegramField = (label: string, value: unknown, maxLength: number) => {
+        const normalized = typeof value === "string" ? value.replace(/\\s+/g, " ").trim() : "";
+        return normalized ? label + ": " + escapeTelegramHtml(normalized.slice(0, maxLength)) : "";
+      };
+      const customDetails = [
+        telegramField("Concept", payload.concept, 550),
+        telegramField("Appearance", payload.appearance, 300),
+        telegramField("Colors", payload.colors, 180),
+        telegramField("Clothing", payload.clothing, 300),
+        telegramField("Theme", payload.theme, 180),
+        telegramField("Instructions", payload.instructions, 450),
+        telegramField("External links", payload.links, 450),
+      ].filter(Boolean);
       await notifyTelegram(
-        "🛍️ <b>New Custom request</b>\n" +
-        "Request: <code>" + escapeTelegramHtml(request.order_code || request.id || "New request") + "</code>\n" +
-        "Client: " + escapeTelegramHtml(fullName) + "\n" +
-        "Email: " + escapeTelegramHtml(email) + "\n" +
-        "Discord: " + escapeTelegramHtml(discord) + "\n" +
-        "Character: " + escapeTelegramHtml(payload.character_name || "Not specified") + "\n" +
-        "Category: " + escapeTelegramHtml(payload.category || "Other") + "\n" +
-        "License: " + escapeTelegramHtml(license) + "\n" +
-        "Description: " + escapeTelegramHtml(customSummary || "No additional description") + "\n" +
-        "References: " + stored.length,
+        [
+          "🛍️ <b>New Custom request</b>",
+          "Request: <code>" + escapeTelegramHtml(request.order_code || request.id || "New request") + "</code>",
+          "Client: " + escapeTelegramHtml(fullName),
+          "Email: " + escapeTelegramHtml(email),
+          "Discord: " + escapeTelegramHtml(discord),
+          "Character: " + escapeTelegramHtml(payload.character_name || "Not specified"),
+          "Category: " + escapeTelegramHtml(payload.category || "Other"),
+          "License: " + escapeTelegramHtml(license),
+          "License fee: <b>$" + licenseFee.toFixed(2) + " USD</b>",
+          ...customDetails,
+          "References uploaded: " + stored.length,
+        ].join("\\n"),
         supabase,
         "custom_request",
       );
