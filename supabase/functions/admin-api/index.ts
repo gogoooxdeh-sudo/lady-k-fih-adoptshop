@@ -579,13 +579,14 @@ async function deleteRecord(body: Record<string, unknown>) {
   if (!result?.ok) return respond({ ok: false, error: "The record could not be deleted." }, 409);
   const cleanupErrors: string[] = [];
   const remove = async (bucket: string, paths: unknown[], allowedPrefix: string) => {
-    const candidates = [...new Set(paths.filter((p): p is string =>
-      typeof p === "string" && p.length > 0 && p.startsWith(allowedPrefix) && !p.includes("..") && p.length <= 500
-    ))];
+    const supplied = [...new Set(paths.filter((p): p is string => typeof p === "string" && p.length > 0))];
+    const candidates = supplied.filter((path) =>
+      path.startsWith(allowedPrefix) && !path.includes("..") && path.length <= 500
+    );
+    if (candidates.length !== supplied.length) cleanupErrors.push(bucket + ": some returned paths were outside the expected folder and were not removed");
     if (!candidates.length) return;
     const { error: storageError } = await supabase.storage.from(bucket).remove(candidates);
     if (storageError) cleanupErrors.push(bucket + ": " + storageError.message);
-    if (candidates.length !== paths.length) cleanupErrors.push(bucket + ": some returned paths were outside the expected folder and were not removed");
   };
   if (kind === "adopt") {
     await remove("adoptables", Array.isArray(result.storage_paths) ? result.storage_paths : [], "adopts/" + id + "/");
