@@ -1387,8 +1387,20 @@ const { data: current, error: currentError } = await supabase
 .maybeSingle();
 if (currentError) return respond({ ok: false, error: currentError.message }, 400);
 if (!current) return respond({ ok: false, error: "Custom order not found." }, 404);
-if ((current.initial_paid || current.final_paid) && ["Rejected", "Cancelled"].includes(String(values.status || ""))) {
-return respond({ ok: false, error: "A paid Custom Adopt cannot be rejected or cancelled." }, 409);
+if ("status" in values && (current.initial_paid || current.final_paid)) {
+  const requestedStatus = String(values.status);
+  let allowedPaidStatuses: string[] = [];
+  if (current.payment_plan === "full" && current.final_paid) {
+    allowedPaidStatuses = current.status === "In Progress"
+      ? ["In Progress", "Awaiting Delivery", "Ready for Delivery"]
+      : current.status === "Awaiting Delivery" || current.status === "Ready for Delivery"
+        ? ["Awaiting Delivery", "Ready for Delivery"] : [];
+  } else if (current.payment_plan === "split" && current.initial_paid && !current.final_paid) {
+    allowedPaidStatuses = ["In Progress", "Awaiting Final Payment"];
+  }
+  if (!allowedPaidStatuses.includes(requestedStatus)) {
+    return respond({ ok: false, error: "A paid Custom order cannot be moved backwards or cancelled. Use the payment and delivery workflow to advance it." }, 409);
+  }
 }
 if (current.status === "Completed") {
   const allowedPostPaymentFields = new Set(["character_name", "original_idea_by", "final_artwork_path", "metadata", "preview_presented", "final_approved"]);
