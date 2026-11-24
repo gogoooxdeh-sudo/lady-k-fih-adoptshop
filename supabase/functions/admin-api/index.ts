@@ -568,6 +568,53 @@ async function cleanupAdoptImageUploads(body: Record<string, unknown>) {
   return respond({ ok: true, removed_count: unlinkedPaths.length });
 }
 
+async function deleteRecord(body: Record<string, unknown>) {
+  const kind = body.record_type === "adopt" ? "adopt" : body.record_type === "custom" ? "custom" : "";
+  const id = body.id;
+  if (!kind || !validUuid(id)) return respond({ ok: false, error: "Invalid record deletion request." }, 400);
+  const rpcName = kind === "adopt" ? "admin_delete_adopt" : "admin_delete_custom_order";
+  const { data, error } = await supabase.rpc(rpcName, kind === "adopt" ? { p_adopt_id: id } : { p_custom_order_id: id });
+  if (error) return respond({ ok: false, error: error.message }, 409);
+  const result = (Array.isArray(data) ? data[0] : data) as Record<string, unknown> | null;
+  if (!result?.ok) return respond({ ok: false, error: "The record could not be deleted." }, 409);
+  const cleanupErrors: string[] = [];
+  const remove = async (bucket: string, paths: unknown[]) => {
+    const valid = [...new Set(paths.filter((p): p is string => typeof p === "string" && p.length > 0 && !p.includes("..")))];
+    if (!valid.length) return;
+    const { error: storageError } = await supabase.storage.from(bucket).remove(valid);
+    if (storageError) cleanupErrors.push(bucket + ": " + storageError.message);
+  };
+  if (kind === "adopt") {
+    await remove("adoptables", Array.isArray(result.storage_paths) ? result.storage_paths : []);
+  } else {
+    await remove("custom-references", Array.isArray(result.reference_paths) ? result.reference_paths : []);
+    if (typeof result.final_artwork_path === "string" && result.final_artwork_path) {
+      await remove("private-deliveries", [result.final_artwork_path]);
+    }
+  }
+  return respond({ ok: true, deleted: true, cleanup_warning: cleanupErrors.length ? cleanupErrors.join("; ") : null });
+}
+
+async function setCustomArchiveVisibility(body: Record<string, unknown>) {
+  if (!validUuid(body.custom_order_id) || typeof body.visible !== "boolean") {
+    return respond({ ok: false, error: "Invalid Custom archive visibility request." }, 400);
+  }
+  const { data, error } = await supabase.from("custom_orders")
+    .update({ public_archive_visible: body.visible, updated_at: new Date().toISOString() })
+    .eq("id", body.custom_order_id).eq("status", "Completed")
+    .not("final_artwork_path", "is", null).not("final_artwork_saved_at", "is", null)
+    .select("id, public_archive_visible").maybeSingle();
+  if (error) return respond({ ok: false, error: error.message }, 400);
+  if (!data) return respond({ ok: false, error: "Only a registered, completed Custom can be hidden from the public archive." }, 409);
+  await supabase.from("activity_log").insert({
+    entity_type: "custom_order", entity_id: data.id,
+    action: body.visible ? "custom_archive_restored" : "custom_archive_hidden",
+    description: body.visible ? "Completed Custom restored to public archive" : "Completed Custom hidden from public archive",
+    metadata: { public_archive_visible: body.visible },
+  });
+  return respond({ ok: true, data });
+}
+
 async function sendTelegramTest() {
   const token = Deno.env.get("TELEGRAM_BOT_TOKEN");
   const chatId = Deno.env.get("TELEGRAM_CHAT_ID");
@@ -1525,6 +1572,12 @@ return await cleanupAdoptImageUploads(body);
 
 case "update-adopt":
 return await updateAdopt(body);
+
+case "delete-record":
+return await deleteRecord(body);
+
+case "set-custom-archive-visibility":
+return await setCustomArchiveVisibility(body);
 
 case "update-store-visibility":
 return await updateStoreVisibility(body);
